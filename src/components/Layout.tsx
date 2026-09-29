@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { onBusy } from "../api";
 import { buildNav, NavGroup, NavItem } from "../nav";
@@ -19,7 +19,7 @@ function Palette({ nav, onClose }: PaletteProps) {
     () =>
       nav
         .flatMap((g) => g.items.map((i) => ({ ...i, group: g.title })))
-        .concat([{ label: "Dashboard", to: "/", icon: "loom", group: "Home", res: "" }]),
+        .concat([{ label: "Dashboard", to: "/dashboard", icon: "loom", group: "Home", res: "" }]),
     [nav]
   );
   const rows = all.filter((i) => (i.label + i.group).toLowerCase().includes(q.toLowerCase())).slice(0, 9);
@@ -68,6 +68,9 @@ export default function Layout() {
   const [open, setOpen] = useState(false);
   const [pal, setPal] = useState(false);
   const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("side_collapsed") === "true");
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const loc = useLocation();
 
   useEffect(() => {
@@ -76,7 +79,30 @@ export default function Layout() {
       unsub();
     };
   }, []);
-  useEffect(() => setOpen(false), [loc.pathname]);
+  useEffect(() => {
+    setOpen(false);
+    setUserMenuOpen(false);
+    
+    let title = "Dashboard";
+    if (loc.pathname.includes("masters")) title = "Masters";
+    else if (loc.pathname.includes("vouchers")) title = "Vouchers";
+    else if (loc.pathname.includes("planning")) title = "Production Planning";
+    else if (loc.pathname.includes("requisitions")) title = "Requisitions";
+    else if (loc.pathname.includes("logistics")) title = "Logistics";
+    else if (loc.pathname.includes("stock")) title = "Stock";
+    else if (loc.pathname.includes("admin")) title = "Admin Settings";
+    document.title = `${title} | Loomline ERP`;
+  }, [loc.pathname]);
+  
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -88,62 +114,126 @@ export default function Layout() {
     return () => window.removeEventListener("keydown", k);
   }, []);
 
+  const toggleSidebar = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem("side_collapsed", String(next));
+      return next;
+    });
+  };
+
   return (
-    <div className="shell">
+    <div className={"shell" + (collapsed ? " side-collapsed" : "")}>
       {busy && <ThreadBar />}
-      <aside className={"side" + (open ? " open" : "")}>
+      <aside className={"side" + (open ? " open" : "") + (collapsed ? " collapsed" : "")}>
         <div className="brand">
-          <Icon name="spool" size={38} style={{ color: "var(--tape)" }} />
-          <div>
-            <b>Loomline</b>
-            <small>Garment manufacturing ERP</small>
+          <div className="brand-header">
+            <Icon name="spool" size={34} style={{ color: "var(--tape)", flexShrink: 0 }} />
+            {!collapsed && (
+              <div className="brand-text">
+                <b>Loomline</b>
+                <small>Garment manufacturing ERP</small>
+              </div>
+            )}
           </div>
+          <button
+            className="side-toggle"
+            onClick={toggleSidebar}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <Icon name={collapsed ? "chevronRight" : "chevronLeft"} size={16} />
+          </button>
         </div>
-        <NavLink to="/" end className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}>
+        <NavLink
+          to="/dashboard"
+          className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}
+          title="Dashboard"
+        >
           <Icon name="loom" size={19} />
-          Dashboard
+          {!collapsed && <span>Dashboard</span>}
         </NavLink>
         {nav.map((g) => (
           <div key={g.title}>
             <div
               className="nav-title"
               role="button"
+              title={g.title}
               onClick={() => setClosed((c) => ({ ...c, [g.title]: !c[g.title] }))}
             >
               <Icon name={g.icon} size={16} />
-              {g.title}
+              {!collapsed && <span>{g.title}</span>}
+              {!collapsed && (
+                <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.6 }}>
+                  {closed[g.title] ? "▶" : "▼"}
+                </span>
+              )}
             </div>
             {!closed[g.title] &&
               g.items.map((i: NavItem) => (
-                <NavLink key={i.to} to={i.to} className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}>
+                <NavLink
+                  key={i.to}
+                  to={i.to}
+                  className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}
+                  title={i.label}
+                >
                   <Icon name={i.icon || "button"} size={19} />
-                  {i.label}
+                  {!collapsed && <span>{i.label}</span>}
                 </NavLink>
               ))}
           </div>
         ))}
+        <div style={{ marginTop: "auto" }} />
+        <button
+          className="nav-item"
+          onClick={logout}
+          title="Sign out"
+          style={{ background: "transparent", border: "none", width: "100%", textAlign: "left", cursor: "pointer", color: "var(--red)" }}
+        >
+          <Icon name="logout" size={19} />
+          {!collapsed && <span>Logout</span>}
+        </button>
       </aside>
       <div className="main">
         <header className="top no-print">
           <button className="icon-btn burger" onClick={() => setOpen((o) => !o)} aria-label="Menu">
             <Icon name="menu" />
           </button>
-          <button className="btn ghost sm" onClick={() => setPal(true)}>
-            <Icon name="search" size={16} />
-            Jump to… <kbd style={{ opacity: 0.6 }}>Ctrl K</kbd>
-          </button>
           <div className="grow" />
           <button className="icon-btn" onClick={setTheme} title={theme === "light" ? "Night shift" : "Day shift"}>
             <Icon name={theme === "light" ? "moon" : "sun"} />
           </button>
-          <span className="row" style={{ gap: 6 }}>
-            <Icon name="users" size={18} />
-            <b>{user?.full_name}</b>
-            <span className="muted">{user?.role}</span>
-          </span>
-          <button className="icon-btn" onClick={logout} title="Sign out">
-            <Icon name="logout" />
-          </button>
+          <div className="user-menu-wrap" ref={userMenuRef}>
+            <button
+              className={"user-avatar-btn" + (userMenuOpen ? " active" : "")}
+              onClick={() => setUserMenuOpen((o) => !o)}
+              title={user?.full_name || "Profile"}
+              aria-label="Profile menu"
+            >
+              <div className="avatar-circle">
+                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : <Icon name="users" size={16} />}
+              </div>
+            </button>
+            {userMenuOpen && (
+              <div className="user-dropdown-menu">
+                <div className="user-dropdown-header">
+                  <div className="user-avatar-large">
+                    {user?.full_name ? user.full_name.charAt(0).toUpperCase() : <Icon name="users" size={20} />}
+                  </div>
+                  <div className="user-info-text">
+                    <b>{user?.full_name}</b>
+                    <span className="user-role-badge">{user?.role}</span>
+                    {user?.username && <small className="muted">@{user.username}</small>}
+                  </div>
+                </div>
+                <div className="user-dropdown-divider" />
+                <button className="user-dropdown-item danger" onClick={logout}>
+                  <Icon name="logout" size={16} />
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </header>
         <main className="page">
           <Outlet />

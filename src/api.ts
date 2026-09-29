@@ -51,7 +51,10 @@ export async function api<T = any>(path: string, { method = "GET", body, quiet =
       /* empty body */
     }
     if (!res.ok) {
-      if (res.status === 401 && path !== "/auth/login") onAuthLost();
+      if (res.status === 401 && path !== "/auth/login") {
+        console.warn("Auth lost on path:", path, "response:", data);
+        onAuthLost();
+      }
       throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data?.field);
     }
     return data;

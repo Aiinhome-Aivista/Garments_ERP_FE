@@ -152,6 +152,8 @@ const P: Record<string, React.ReactNode> = {
     </>
   ),
   chevron: <path d="M9 6l6 6-6 6" />,
+  chevronLeft: <path d="M15 18l-6-6 6-6" />,
+  chevronRight: <path d="M9 6l6 6-6 6" />,
   down: <path d="M6 9l6 6 6-6" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   logout: (
