@@ -16,6 +16,9 @@ export default function Login() {
   const [role, setRole] = useState("Sales & dispatch");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showP, setShowP] = useState(false);
+  const [cp, setCp] = useState("");
+  const [showCp, setShowCp] = useState(false);
 
   const go = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +26,11 @@ export default function Login() {
     setErr("");
     try {
       if (isReg) {
+        if (p !== cp) {
+          setErr("Passwords do not match");
+          setBusy(false);
+          return;
+        }
         await register(u, em, fn, p, role);
       } else {
         await login(u, p);
@@ -57,34 +65,63 @@ export default function Login() {
           
           <div className="grid" style={{ gridTemplateColumns: "1fr", gap: "16px" }}>
             {isReg && (
-              <label className="fld">
-                <span style={{ fontWeight: 600 }}>Full Name</span>
-                <input autoFocus={isReg} value={fn} onChange={(e) => setFn(e.target.value)} required minLength={2} placeholder="John Doe" />
-              </label>
+              <>
+                <label className="fld">
+                  <span style={{ fontWeight: 600 }}>Full Name</span>
+                  <input autoFocus={isReg} value={fn} onChange={(e) => setFn(e.target.value)} required minLength={2} placeholder="John Doe" />
+                </label>
+                <label className="fld">
+                  <span style={{ fontWeight: 600 }}>Username</span>
+                  <input value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" required placeholder="Choose a username" />
+                </label>
+                <label className="fld">
+                  <span style={{ fontWeight: 600 }}>Email Address</span>
+                  <input type="email" value={em} onChange={(e) => setEm(e.target.value)} required placeholder="name@company.com" />
+                </label>
+                <label className="fld">
+                  <span style={{ fontWeight: 600 }}>Role</span>
+                  <select value={role} onChange={(e) => setRole(e.target.value)} required>
+                    <option value="Sales & dispatch">Sales & dispatch</option>
+                    <option value="Stores & purchase">Stores & purchase</option>
+                  </select>
+                </label>
+                <label className="fld">
+                  <span style={{ fontWeight: 600 }}>Password</span>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <input type={showP ? "text" : "password"} value={p} onChange={(e) => setP(e.target.value)} autoComplete="new-password" required minLength={8} placeholder="••••••••" style={{ width: "100%", paddingRight: "40px" }} />
+                    <button type="button" onClick={() => setShowP(!showP)} style={{ position: "absolute", right: "10px", background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, display: "flex" }}>
+                      <Icon name={showP ? "eyeOff" : "eye"} size={18} />
+                    </button>
+                  </div>
+                </label>
+                <label className="fld">
+                  <span style={{ fontWeight: 600 }}>Confirm Password</span>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <input type={showCp ? "text" : "password"} value={cp} onChange={(e) => setCp(e.target.value)} autoComplete="new-password" required minLength={8} placeholder="••••••••" style={{ width: "100%", paddingRight: "40px" }} />
+                    <button type="button" onClick={() => setShowCp(!showCp)} style={{ position: "absolute", right: "10px", background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, display: "flex" }}>
+                      <Icon name={showCp ? "eyeOff" : "eye"} size={18} />
+                    </button>
+                  </div>
+                </label>
+              </>
             )}
-            {isReg && (
-              <label className="fld">
-                <span style={{ fontWeight: 600 }}>Email Address</span>
-                <input type="email" value={em} onChange={(e) => setEm(e.target.value)} required placeholder="name@company.com" />
-              </label>
+            {!isReg && (
+              <>
+                <label className="fld">
+                  <span style={{ fontWeight: 600 }}>Username or Email</span>
+                  <input autoFocus={!isReg} value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" required placeholder="Enter username or email" />
+                </label>
+                <label className="fld">
+                  <span style={{ fontWeight: 600 }}>Password</span>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <input type={showP ? "text" : "password"} value={p} onChange={(e) => setP(e.target.value)} autoComplete="current-password" required minLength={1} placeholder="••••••••" style={{ width: "100%", paddingRight: "40px" }} />
+                    <button type="button" onClick={() => setShowP(!showP)} style={{ position: "absolute", right: "10px", background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, display: "flex" }}>
+                      <Icon name={showP ? "eyeOff" : "eye"} size={18} />
+                    </button>
+                  </div>
+                </label>
+              </>
             )}
-            {isReg && (
-              <label className="fld">
-                <span style={{ fontWeight: 600 }}>Role</span>
-                <select value={role} onChange={(e) => setRole(e.target.value)} required>
-                  <option value="Sales & dispatch">Sales & dispatch</option>
-                  <option value="Stores & purchase">Stores & purchase</option>
-                </select>
-              </label>
-            )}
-            <label className="fld">
-              <span style={{ fontWeight: 600 }}>{isReg ? "Username" : "Username or Email"}</span>
-              <input autoFocus={!isReg} value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" required placeholder={isReg ? "Choose a username" : "Enter username or email"} />
-            </label>
-            <label className="fld">
-              <span style={{ fontWeight: 600 }}>Password</span>
-              <input type="password" value={p} onChange={(e) => setP(e.target.value)} autoComplete={isReg ? "new-password" : "current-password"} required minLength={isReg ? 8 : 1} placeholder="••••••••" />
-            </label>
           </div>
           
           {err && (
