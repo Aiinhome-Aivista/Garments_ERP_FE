@@ -87,6 +87,41 @@ label.fld .req { color: var(--red); }
 label.fld .hint { font-weight: 500; font-size: 12px; }
 input, select, textarea { font: 500 15px var(--f-body); color: var(--ink); background: var(--paper); border: 1.5px solid var(--line); border-radius: 5px; padding: 7px 9px; width: 100%; min-width: 0; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--denim-600); box-shadow: 0 0 0 3px rgba(245,184,46,.45); }
+select {
+  appearance: none;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%235e6987" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpolyline points="6 9 12 15 18 9"%3E%3C/polyline%3E%3C/svg%3E');
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  padding-right: 28px;
+}
+[data-theme="dark"] select {
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%239aa6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpolyline points="6 9 12 15 18 9"%3E%3C/polyline%3E%3C/svg%3E');
+}
+
+input[placeholder*="search" i] {
+  background-color: #ffffff !important;
+  border-color: var(--denim-600) !important;
+  box-shadow: 0 0 0 3px rgba(245,184,46,.45) !important;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%235e6987" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Ccircle cx="11" cy="11" r="8"%3E%3C/circle%3E%3Cline x1="21" y1="21" x2="16.65" y2="16.65"%3E%3C/line%3E%3C/svg%3E');
+  background-repeat: no-repeat;
+  background-position: 10px center;
+  padding-left: 34px;
+}
+th .pi-caret-down {
+  font-family: system-ui, -apple-system, sans-serif !important;
+  font-style: normal !important;
+  color: var(--ink) !important;
+}
+th .pi-caret-down:before {
+  content: "▼" !important;
+}
+[data-theme="dark"] input[placeholder*="search" i] {
+  background-color: var(--chalk) !important;
+  border-color: var(--denim-600) !important;
+  box-shadow: 0 0 0 3px rgba(245,184,46,.45) !important;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%239aa6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Ccircle cx="11" cy="11" r="8"%3E%3C/circle%3E%3Cline x1="21" y1="21" x2="16.65" y2="16.65"%3E%3C/line%3E%3C/svg%3E');
+}
 input[readonly], input:disabled, select:disabled { background: var(--denim-100); color: var(--muted); }
 input.err, select.err { border-color: var(--red); }
 input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--denim-800); }
@@ -141,6 +176,16 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 14.5px; }
 
 /* ---------- lookup ---------- */
 .lk { position: relative; }
+.lk::after {
+  content: ""; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  width: 14px; height: 14px; pointer-events: none;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%235e6987" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpolyline points="6 9 12 15 18 9"%3E%3C/polyline%3E%3C/svg%3E');
+  background-repeat: no-repeat; background-position: center; background-size: contain;
+}
+[data-theme="dark"] .lk::after {
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%239aa6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpolyline points="6 9 12 15 18 9"%3E%3C/polyline%3E%3C/svg%3E');
+}
+.lk input { padding-right: 28px; }
 .lk-pop { position: fixed; z-index: 200; background: var(--paper); border: 1.5px solid var(--denim-800); border-radius: 6px; box-shadow: 0 14px 30px -10px rgba(0,0,0,.4); max-height: 280px; overflow-y: auto; }
 .lk-pop div { padding: 7px 10px; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; }
 .lk-pop div.on { background: var(--tape); color: var(--denim-950); }
@@ -209,7 +254,7 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 14.5px; }
 .btn .spool-spin { color: currentColor; }
 
 /* ---------- toast / palette / login ---------- */
-.toasts { position: fixed; right: 18px; bottom: 18px; z-index: 700; display: flex; flex-direction: column; gap: 8px; }
+.toasts { position: fixed; right: 18px; top: 18px; z-index: 700; display: flex; flex-direction: column; gap: 8px; }
 .toast { background: var(--denim-900); color: #fff; padding: 10px 16px 10px 14px; border-radius: 6px; border-left: 6px solid var(--moss); box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; max-width: 420px; animation: slideIn .2s ease-out; }
 .toast.err { border-left-color: var(--red); }
 .palette { width: min(560px, 92vw); background: var(--paper); border-radius: 8px; border-top: 6px solid var(--tape); overflow: hidden; }

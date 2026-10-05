@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { OverlayPanel } from "primereact/overlaypanel";
 import { api, fdate, qty as fq, today } from "../api";
 import Icon from "../components/Icons";
 import Lookup from "../components/Lookup";
+import Pagination from "../components/Pagination";
 import { Btn, Empty, Skeleton, StitchLoader } from "../components/Loaders";
 import { useApp } from "../store";
 
@@ -11,11 +13,22 @@ export function Requisitions() {
   const nav = useNavigate();
   const [rows, setRows] = useState<any[] | null>(null);
   const [st, setSt] = useState("");
+  const filterPanel = useRef<OverlayPanel>(null);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setRows(null);
+    setPage(1);
     api<any[]>(`/requisitions${st ? "?status=" + st : ""}`).then(setRows);
   }, [st]);
+
+  const filteredRows = rows?.filter(r => {
+    if (from && r.req_date < from) return false;
+    if (to && r.req_date > to) return false;
+    return true;
+  }) || null;
 
   return (
     <>
@@ -31,17 +44,49 @@ export function Requisitions() {
           </Link>
         )}
       </div>
-      <div className="chips" style={{ marginBottom: 12 }}>
-        {["", "Open", "Closed", "Cancelled"].map((s) => (
-          <button key={s} className={"chip" + (st === s ? " on" : "")} onClick={() => setSt(s)}>
-            {s || "All"}
+      <div className="row" style={{ marginBottom: 12 }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", background: "var(--bg)", border: "1px solid var(--bord)", borderRadius: 6 }}>
+          <div style={{ padding: "8px 12px", color: "var(--denim-400)", fontStyle: "italic", fontSize: 14 }}>
+            Filter Requisitions
+          </div>
+          <button
+            className="icon-btn"
+            onClick={(e) => filterPanel.current?.toggle(e)}
+            title="Filters"
+            style={{ marginRight: 4 }}
+          >
+            <i className="pi pi-caret-down" style={{ fontSize: '1rem', color: "var(--denim-400)" }}></i>
           </button>
-        ))}
+          <OverlayPanel ref={filterPanel}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 250 }}>
+              <b>Filters</b>
+              <label className="fld">
+                <span>Status</span>
+                <select value={st} onChange={(e) => setSt(e.target.value)} style={{ width: "100%" }}>
+                  <option value="">All Statuses</option>
+                  <option value="Open">Open</option>
+                  <option value="Closed">Closed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </label>
+              <div className="row">
+                <label className="fld" style={{ flex: 1 }}>
+                  <span>From</span>
+                  <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ width: "100%" }} title="From date" />
+                </label>
+                <label className="fld" style={{ flex: 1, marginLeft: 8 }}>
+                  <span>To</span>
+                  <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ width: "100%" }} title="To date" />
+                </label>
+              </div>
+            </div>
+          </OverlayPanel>
+        </div>
       </div>
       <div className="tbl-wrap">
-        {rows === null ? (
+        {filteredRows === null ? (
           <Skeleton rows={6} />
-        ) : !rows.length ? (
+        ) : !filteredRows.length ? (
           <Empty icon="tag" title="No requisitions" />
         ) : (
           <table className="tbl">
@@ -57,7 +102,7 @@ export function Requisitions() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {filteredRows.slice((page - 1) * 10, page * 10).map((r) => (
                 <tr key={r.id} className="click" onClick={() => nav(`/requisitions/${r.id}`)}>
                   <td>
                     <b>{r.req_no}</b>
@@ -79,6 +124,9 @@ export function Requisitions() {
           </table>
         )}
       </div>
+      {filteredRows && (
+        <Pagination page={page} total={filteredRows.length} size={10} onChange={setPage} itemName="requisitions" />
+      )}
     </>
   );
 }
@@ -259,7 +307,7 @@ export function RequisitionForm() {
                         className="icon-btn del"
                         onClick={() => setR({ ...r, items: r.items.filter((_: any, j: number) => j !== i) })}
                       >
-                        <Icon name="scissors" size={18} />
+                        <Icon name="trash" size={18} />
                       </button>
                     )}
                   </td>

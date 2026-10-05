@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api, fdate } from "../api";
 import Icon from "../components/Icons";
 import { Btn, Skeleton } from "../components/Loaders";
+import Pagination from "../components/Pagination";
 import { useApp } from "../store";
 
 function Users() {
@@ -9,6 +10,7 @@ function Users() {
   const [users, setUsers] = useState<any[] | null>(null);
   const [roles, setRoles] = useState<any[]>([]);
   const [ed, setEd] = useState<any | null>(null);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(() => {
     api<any[]>("/users").then(setUsers);
@@ -20,6 +22,18 @@ function Users() {
     try {
       await api(`/users${ed.id ? "/" + ed.id : ""}`, { method: ed.id ? "PUT" : "POST", body: ed });
       toast("User saved");
+      setEd(null);
+      load();
+    } catch (e: any) {
+      toast(e.message, "err");
+    }
+  };
+
+  const remove = async () => {
+    if (!confirm("Delete this user?")) return;
+    try {
+      await api(`/users/${ed.id}`, { method: "DELETE" });
+      toast("User deleted");
       setEd(null);
       load();
     } catch (e: any) {
@@ -49,7 +63,7 @@ function Users() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
+              {users.slice((page - 1) * 10, page * 10).map((u) => (
                 <tr key={u.id} className="click" onClick={() => setEd({ ...u })}>
                   <td>
                     <b>{u.username}</b>
@@ -66,8 +80,11 @@ function Users() {
           </table>
         )}
       </div>
+      {users && (
+        <Pagination page={page} total={users.length} size={10} onChange={setPage} itemName="users" />
+      )}
       {ed && (
-        <div className="veil center" onMouseDown={(e) => e.target === e.currentTarget && setEd(null)}>
+        <div className="veil center">
           <div className="modal" style={{ width: 520 }}>
             <div className="modal-head">
               <h2>{ed.id ? "Edit user" : "New user"}</h2>
@@ -111,6 +128,12 @@ function Users() {
               </div>
             </div>
             <div className="modal-foot">
+              {ed.id && (
+                <Btn className="danger ghost" icon="trash" onClick={remove}>
+                  Delete
+                </Btn>
+              )}
+              <div style={{ flex: 1 }} />
               <Btn className="ghost" onClick={() => setEd(null)}>
                 Cancel
               </Btn>
@@ -173,6 +196,18 @@ function Roles() {
     }
   };
 
+  const remove = async () => {
+    if (!confirm("Delete this role?")) return;
+    try {
+      await api(`/roles/${ed.id}`, { method: "DELETE" });
+      toast("Role deleted");
+      setEd(null);
+      load();
+    } catch (e: any) {
+      toast(e.message, "err");
+    }
+  };
+
   return (
     <>
       <div className="row" style={{ marginBottom: 10 }}>
@@ -219,6 +254,12 @@ function Roles() {
             </div>
           )}
           <div className="row" style={{ marginTop: 14 }}>
+            {ed.id && (
+              <Btn className="danger ghost" icon="trash" onClick={remove}>
+                Delete
+              </Btn>
+            )}
+            <div style={{ flex: 1 }} />
             <Btn className="tape" icon="check" onClick={save}>
               Save role
             </Btn>
@@ -237,6 +278,7 @@ function Keys() {
   const [rows, setRows] = useState<any[] | null>(null);
   const [name, setName] = useState("");
   const [fresh, setFresh] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(() => api<any[]>("/api-clients").then(setRows), []);
   useEffect(() => {
@@ -295,7 +337,7 @@ function Keys() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {rows.slice((page - 1) * 10, page * 10).map((r) => (
                 <tr key={r.id}>
                   <td>
                     <b>{r.name}</b>
@@ -319,6 +361,9 @@ function Keys() {
           </table>
         )}
       </div>
+      {rows && (
+        <Pagination page={page} total={rows.length} size={10} onChange={setPage} itemName="keys" />
+      )}
     </>
   );
 }

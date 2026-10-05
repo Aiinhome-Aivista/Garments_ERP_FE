@@ -67,7 +67,7 @@ export default function Layout() {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [pal, setPal] = useState(false);
-  const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("side_collapsed") === "true");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -159,17 +159,17 @@ export default function Layout() {
               className="nav-title"
               role="button"
               title={g.title}
-              onClick={() => setClosed((c) => ({ ...c, [g.title]: !c[g.title] }))}
+              onClick={() => setOpened((c) => ({ ...c, [g.title]: !c[g.title] }))}
             >
               <Icon name={g.icon} size={16} />
               {!collapsed && <span>{g.title}</span>}
               {!collapsed && (
                 <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.6 }}>
-                  {closed[g.title] ? "▶" : "▼"}
+                  {!opened[g.title] ? "▶" : "▼"}
                 </span>
               )}
             </div>
-            {!closed[g.title] &&
+            {opened[g.title] &&
               g.items.map((i: NavItem) => (
                 <NavLink
                   key={i.to}

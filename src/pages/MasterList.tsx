@@ -1,12 +1,15 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, qs } from "../api";
 import ChildGrid from "../components/ChildGrid";
 import { Field, FieldDef, showIf } from "../components/Field";
 import Icon from "../components/Icons";
 import Lookup from "../components/Lookup";
+import Pagination from "../components/Pagination";
 import { Btn, Empty, Skeleton } from "../components/Loaders";
 import { useApp } from "../store";
+import { OverlayPanel } from "primereact/overlaypanel";
+import { ExcelFilter } from "../components/ExcelFilter";
 
 interface MasterDef {
   key: string;
@@ -75,7 +78,7 @@ function MasterForm({ def, id, onClose, onSaved }: MasterFormProps) {
   };
 
   return (
-    <div className="veil" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="veil">
       <div className="drawer">
         <div className="drawer-head">
           <Icon name={def.icon || "button"} size={26} style={{ color: "var(--tape)" }} />
@@ -161,27 +164,37 @@ export default function MasterList() {
   const { key } = useParams<{ key: string }>();
   const { meta, can } = useApp();
   const def: MasterDef | undefined = meta?.masters?.[key || ""];
+  const filterPanel = useRef<OverlayPanel>(null);
 
   const [rows, setRows] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
+  const [filters, setFilters] = useState<Record<string, string[]>>({});
+  const [activeFilterCol, setActiveFilterCol] = useState<string | null>(null);
   const [active, setActive] = useState("1");
   const [editing, setEditing] = useState<number | null | undefined>(undefined);
-  const size = 50;
+  const size = 10;
 
   const load = useCallback(
-    () =>
-      api<any>(`/masters/${key}${qs({ q, active, page, page_size: size })}`).then((r) => {
+    () => {
+      setLoading(true);
+      const searchQs = Object.fromEntries(Object.entries(filters).filter(([k, v]) => v && v.length > 0).map(([k, v]) => ["s_" + k, Array.isArray(v) ? v.join(",") : v]));
+      return api<any>(`/masters/${key}${qs({ q, active, page, page_size: size, ...searchQs })}`, { quiet: true }).then((r) => {
         setRows(r.rows);
         setTotal(r.total);
-      }),
-    [key, q, active, page]
+      }).finally(() => setLoading(false));
+    },
+    [key, q, active, page, filters]
   );
 
   useEffect(() => {
     setRows(null);
+    setFilters({});
     setPage(1);
+    setActive("1");
+    setQ("");
   }, [key]);
 
   useEffect(() => {
@@ -202,22 +215,44 @@ export default function MasterList() {
           {def.help && <p>{def.help}</p>}
         </div>
         <div className="row no-print">
-          <div style={{ position: "relative" }}>
-            <input
-              placeholder="Search…"
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPage(1);
-              }}
-              style={{ width: 220 }}
-            />
-          </div>
-          <select style={{ width: 130 }} value={active} onChange={(e) => setActive(e.target.value)}>
-            <option value="1">Active</option>
-            <option value="0">Inactive</option>
-            <option value="all">All</option>
-          </select>
+          <input
+            placeholder="Search here"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+            style={{ width: 260 }}
+          />
+          <OverlayPanel ref={filterPanel}>
+              {activeFilterCol && (
+                <div style={{ minWidth: 200 }}>
+                  {activeFilterCol === "active" ? (
+                    <div style={{ padding: "8px" }}>
+                      <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13, color: "var(--muted)" }}>
+                        Filter Status
+                      </div>
+                      <select
+                        style={{ width: "100%", padding: "6px", fontSize: 14 }}
+                        value={active}
+                        onChange={(e) => { setActive(e.target.value); setPage(1); filterPanel.current?.hide(); }}
+                      >
+                        <option value="1">Active</option>
+                        <option value="0">Inactive</option>
+                        <option value="all">All</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <ExcelFilter
+                      rows={rows || []}
+                      column={activeFilterCol}
+                      filters={filters}
+                      setFilters={(f) => { setFilters(f); setPage(1); }}
+                    />
+                  )}
+                </div>
+              )}
+            </OverlayPanel>
           {can(def.key, "create") && (
             <button className="btn tape" onClick={() => setEditing(null)}>
               <Icon name="plus" size={17} />
@@ -226,7 +261,12 @@ export default function MasterList() {
           )}
         </div>
       </div>
-      <div className="tbl-wrap">
+      <div className="tbl-wrap" style={{ position: "relative" }}>
+        {loading && rows !== null && (
+          <div style={{ position: "absolute", inset: 0, background: "var(--bg)", opacity: 0.6, display: "flex", justifyContent: "center", paddingTop: 60, zIndex: 10 }}>
+            <i className="pi pi-spin pi-spinner" style={{ fontSize: "2rem", color: "var(--tape)" }}></i>
+          </div>
+        )}
         {rows === null ? (
           <Skeleton rows={8} />
         ) : !rows.length ? (
@@ -237,15 +277,42 @@ export default function MasterList() {
           <table className="tbl">
             <thead>
               <tr>
-                {def.hierarchical && <th>Name</th>}
+                {def.hierarchical && (
+                  <th>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      Name
+                      <i
+                        className="pi pi-caret-down"
+                        style={{ fontSize: "0.75rem", cursor: "pointer", color: filters.name ? "var(--denim-600)" : "var(--muted)" }}
+                        onClick={(e) => { setActiveFilterCol("name"); filterPanel.current?.toggle(e); }}
+                      />
+                    </div>
+                  </th>
+                )}
                 {cols.map((f) =>
                   def.hierarchical && f.name === "name" ? null : (
                     <th key={f.name} className={["int", "decimal"].includes(f.type) ? "num" : ""}>
-                      {f.label}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: ["int", "decimal"].includes(f.type) ? "flex-end" : "flex-start" }}>
+                        {f.label}
+                        <i
+                          className="pi pi-caret-down"
+                          style={{ fontSize: "0.75rem", cursor: "pointer", color: filters[f.name] ? "var(--denim-600)" : "var(--muted)" }}
+                          onClick={(e) => { setActiveFilterCol(f.name); filterPanel.current?.toggle(e); }}
+                        />
+                      </div>
                     </th>
                   )
                 )}
-                <th>Status</th>
+                <th>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Status
+                    <i
+                      className="pi pi-caret-down"
+                      style={{ fontSize: "0.75rem", cursor: "pointer", color: active !== "all" ? "var(--denim-600)" : "var(--muted)" }}
+                      onClick={(e) => { setActiveFilterCol("active"); filterPanel.current?.toggle(e); }}
+                    />
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -276,17 +343,7 @@ export default function MasterList() {
         )}
       </div>
       {!def.hierarchical && total > size && (
-        <div className="row" style={{ marginTop: 12 }}>
-          <button className="btn ghost sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-            Previous
-          </button>
-          <span className="muted">
-            Page {page} of {Math.ceil(total / size)} · {total} records
-          </span>
-          <button className="btn ghost sm" disabled={page * size >= total} onClick={() => setPage(page + 1)}>
-            Next
-          </button>
-        </div>
+        <Pagination page={page} total={total} size={size} onChange={setPage} />
       )}
       {editing !== undefined && (
         <MasterForm

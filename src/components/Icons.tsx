@@ -16,11 +16,11 @@ const P: Record<string, React.ReactNode> = {
       <path d="M8 6v12M16 6v12M8 9l8 2M8 12l8 2M8 15l8 2" />
     </>
   ),
-  scissors: (
+  trash: (
     <>
-      <circle cx="6" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <path d="M8.5 7.5L21 18M8.5 16.5L21 6" />
+      <path d="M3 6h18" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M10 11v6M14 11v6" />
     </>
   ),
   hanger: (
@@ -137,7 +137,6 @@ const P: Record<string, React.ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
   x: <path d="M6 6l12 12M18 6L6 18" />,
   edit: <path d="M4 20l1-4L16 5l3 3L8 19z" />,
-  trash: <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />,
   search: (
     <>
       <circle cx="11" cy="11" r="6" />

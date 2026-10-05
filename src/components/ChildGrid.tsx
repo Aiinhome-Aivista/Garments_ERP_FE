@@ -18,7 +18,7 @@ export interface ChildGridProps {
 
 /** Editable grid for a master's child table (BOM, discount structure, terms…). */
 export default function ChildGrid({ def, rows, onChange, form, disabled, errors = {} }: ChildGridProps) {
-  const cols = def.fields.filter((f) => showIf(f, form || {}));
+  const cols = def.fields;
   const set = (i: number, patch: any) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const blank = () => Object.fromEntries(def.fields.filter((f) => "default" in f).map((f) => [f.name, f.default]));
   const full = !!def.max_rows && rows.length >= def.max_rows;
@@ -50,16 +50,30 @@ export default function ChildGrid({ def, rows, onChange, form, disabled, errors 
                 <td className="sl">{i + 1}</td>
                 {cols.map((f) => (
                   <td key={f.name} style={{ minWidth: f.type === "ref" || f.type === "textarea" ? 190 : 100 }}>
-                    <Input
-                      f={f}
-                      compact
-                      value={r[f.name]}
-                      label={r[f.name + "__label"]}
-                      disabled={disabled}
-                      invalid={!!errors[`${i}.${f.name}`]}
-                      onChange={(v: any, row: any) => set(i, { [f.name]: v, [f.name + "__label"]: row ? row.label : undefined })}
-                      form={r}
-                    />
+                    {showIf(f, r) ? (
+                      <Input
+                        f={f}
+                        compact
+                        value={r[f.name]}
+                        label={r[f.name + "__label"]}
+                        disabled={disabled}
+                        invalid={!!errors[`${i}.${f.name}`]}
+                        onChange={(v: any, row: any) => {
+                          const patch: any = { [f.name]: v, [f.name + "__label"]: row ? row.label : undefined };
+                          const newRow = { ...r, ...patch };
+                          for (const other of cols) {
+                            if (other.name !== f.name && !showIf(other, newRow)) {
+                              patch[other.name] = null;
+                              patch[other.name + "__label"] = null;
+                            }
+                          }
+                          set(i, patch);
+                        }}
+                        form={r}
+                      />
+                    ) : (
+                      <span className="muted" style={{ paddingLeft: 8 }}>—</span>
+                    )}
                   </td>
                 ))}
                 <td>
@@ -70,7 +84,7 @@ export default function ChildGrid({ def, rows, onChange, form, disabled, errors 
                       title="Remove row"
                       onClick={() => onChange(rows.filter((_, j) => j !== i))}
                     >
-                      <Icon name="scissors" size={18} />
+                      <Icon name="trash" size={18} />
                     </button>
                   )}
                 </td>

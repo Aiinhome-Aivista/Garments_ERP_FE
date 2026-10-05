@@ -95,7 +95,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
     : (groups.find(([id]) => id === one)?.[1] || []).map((l) => ({ ...l, take: Number(l.pending_qty) }));
 
   return (
-    <div className="veil center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="veil center">
       <div className="modal">
         <div className="modal-head">
           <Icon name="clipboard" size={24} />
@@ -937,7 +937,7 @@ export default function VoucherForm() {
                         title="Remove line"
                         onClick={() => setItems(items.filter((_, j) => j !== i))}
                       >
-                        <Icon name="scissors" size={18} />
+                        <Icon name="trash" size={18} />
                       </button>
                     )}
                   </td>
@@ -1058,7 +1058,7 @@ export default function VoucherForm() {
                   <td>
                     {editable && (
                       <button type="button" className="icon-btn del" onClick={() => setLedgers(ledgers.filter((_, j) => j !== i))}>
-                        <Icon name="scissors" size={18} />
+                        <Icon name="trash" size={18} />
                       </button>
                     )}
                   </td>
@@ -1131,7 +1131,7 @@ export default function VoucherForm() {
                             className="icon-btn del"
                             onClick={() => setList(list.filter((_: any, j: number) => j !== i))}
                           >
-                            <Icon name="scissors" size={18} />
+                            <Icon name="trash" size={18} />
                           </button>
                         )}
                       </td>

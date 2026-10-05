@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { api, fdate, money } from "../api";
 import { Input } from "../components/Field";
+import Lookup from "../components/Lookup";
 import { Btn, Empty, Skeleton } from "../components/Loaders";
+import { OverlayPanel } from "primereact/overlaypanel";
 import { useApp } from "../store";
+import { ExcelFilter } from "../components/ExcelFilter";
 
 const F: [string, string, string][] = [
   ["einvoice_no", "E-invoice no", "text"],
@@ -20,14 +23,21 @@ const F: [string, string, string][] = [
 export default function Logistics() {
   const { toast, can } = useApp();
   const [q, setQ] = useState("");
+  const [filters, setFilters] = useState<Record<string, string[]>>({});
+  const [activeFilterCol, setActiveFilterCol] = useState<string | null>(null);
+  const filterPanel = React.useRef<OverlayPanel>(null);
   const [rows, setRows] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
   const [cur, setCur] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => api<any[]>(`/logistics?q=${encodeURIComponent(q)}`).then(setRows), 200);
+    setLoading(true);
+    const t = setTimeout(() => api<any[]>(`/logistics`, { quiet: true })
+      .then(setRows)
+      .finally(() => setLoading(false)), 200);
     return () => clearTimeout(t);
-  }, [q]);
+  }, []);
 
   const pick = async (id: number) => setCur(await api(`/logistics/${id}`));
 
@@ -38,13 +48,28 @@ export default function Logistics() {
       await api(`/logistics/${cur.id}`, { method: "PUT", body: cur });
       toast(`Logistics saved for ${cur.voucher_no}`);
       setCur(null);
-      api<any[]>(`/logistics?q=${encodeURIComponent(q)}`).then(setRows);
+      api<any[]>(`/logistics`).then(setRows);
     } catch (e: any) {
       toast(e.message, "err");
     } finally {
       setBusy(false);
     }
   };
+
+  const filteredRows = rows?.filter(r => {
+    if (q && !r.voucher_no.toLowerCase().includes(q.toLowerCase()) && !r.party_name.toLowerCase().includes(q.toLowerCase())) return false;
+    for (const [k, v] of Object.entries(filters)) {
+      if (!v || v.length === 0) continue;
+      if (k === "status") {
+        const isUpdated = r.eway_bill_no || r.transporter_cn_no || r.courier_slip_no;
+        if (v.includes("open") && isUpdated) return false;
+        if (v.includes("updated") && !isUpdated) return false;
+      } else {
+        if (!v.includes(String(r[k] || ""))) return false;
+      }
+    }
+    return true;
+  }) || null;
 
   return (
     <>
@@ -56,16 +81,80 @@ export default function Logistics() {
       </div>
       <div className="grid" style={{ gridTemplateColumns: "minmax(320px,1fr) minmax(360px,1.2fr)", alignItems: "start" }}>
         <div>
-          <input placeholder="Find invoice or party…" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 10 }} />
-          <div className="tbl-wrap">
-            {rows === null ? (
+          <div className="row" style={{ marginBottom: 12 }}>
+            <input
+              placeholder="Search here"
+              style={{ width: "100%" }}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            <OverlayPanel ref={filterPanel}>
+              {activeFilterCol && (
+                <div style={{ minWidth: 200 }}>
+                  {activeFilterCol === "status" ? (
+                    <div style={{ padding: "8px" }}>
+                      <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13, color: "var(--muted)" }}>
+                        Filter Status
+                      </div>
+                      <select
+                        style={{ width: "100%", padding: "6px", fontSize: 14 }}
+                        value={filters.status?.[0] || ""}
+                        onChange={(e) => { setFilters({ ...filters, status: [e.target.value] }); filterPanel.current?.hide(); }}
+                      >
+                        <option value="">All Statuses</option>
+                        <option value="open">Open</option>
+                        <option value="updated">Updated</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <ExcelFilter
+                      rows={rows || []}
+                      column={activeFilterCol}
+                      filters={filters}
+                      setFilters={setFilters}
+                    />
+                  )}
+                </div>
+              )}
+            </OverlayPanel>
+          </div>
+          <div className="tbl-wrap" style={{ position: "relative" }}>
+            {loading && filteredRows !== null && (
+              <div style={{ position: "absolute", inset: 0, background: "var(--bg)", opacity: 0.6, display: "flex", justifyContent: "center", paddingTop: 60, zIndex: 10 }}>
+                <i className="pi pi-spin pi-spinner" style={{ fontSize: "2rem", color: "var(--tape)" }}></i>
+              </div>
+            )}
+            {filteredRows === null ? (
               <Skeleton />
-            ) : !rows.length ? (
-              <Empty icon="truck" title="No approved invoices" />
+            ) : !filteredRows.length ? (
+              <Empty icon="truck" title="No invoices match filters" />
             ) : (
               <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        Invoice
+                        <i className="pi pi-caret-down" style={{ fontSize: "0.75rem", cursor: "pointer", color: filters.voucher_no ? "var(--denim-600)" : "var(--muted)" }} onClick={(e) => { setActiveFilterCol("voucher_no"); filterPanel.current?.toggle(e); }} />
+                      </div>
+                    </th>
+                    <th>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        Party
+                        <i className="pi pi-caret-down" style={{ fontSize: "0.75rem", cursor: "pointer", color: filters.party_name ? "var(--denim-600)" : "var(--muted)" }} onClick={(e) => { setActiveFilterCol("party_name"); filterPanel.current?.toggle(e); }} />
+                      </div>
+                    </th>
+                    <th className="num">Value</th>
+                    <th>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        Status
+                        <i className="pi pi-caret-down" style={{ fontSize: "0.75rem", cursor: "pointer", color: filters.status ? "var(--denim-600)" : "var(--muted)" }} onClick={(e) => { setActiveFilterCol("status"); filterPanel.current?.toggle(e); }} />
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {filteredRows.map((r) => (
                     <tr
                       key={r.id}
                       className="click"

@@ -39,9 +39,12 @@ export default function Planning() {
   const [sel, setSel] = useState<number[]>([]);
   const [res, setRes] = useState<any | null>(null);
   const [plans, setPlans] = useState<any[] | null>(null);
+  const [planStatus, setPlanStatus] = useState("");
   const [busy, setBusy] = useState("");
   const [remarks, setRemarks] = useState("");
   const [view, setView] = useState<any | null>(null);
+
+  const filteredPlans = plans?.filter(p => !planStatus || p.status === planStatus) || null;
 
   const load = useCallback(() => {
     api<any[]>("/planning/open-orders").then(setOrders);
@@ -241,11 +244,16 @@ export default function Planning() {
       <div className="section">
         <div className="sec-head">
           <h3>Plans</h3>
+          <select value={planStatus} onChange={(e) => setPlanStatus(e.target.value)} style={{ width: 140, marginLeft: "auto" }}>
+            <option value="">All Statuses</option>
+            <option value="Accepted">Accepted</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
         </div>
         <div className="tbl-wrap">
-          {plans === null ? (
+          {filteredPlans === null ? (
             <Skeleton />
-          ) : !plans.length ? (
+          ) : !filteredPlans.length ? (
             <Empty icon="clipboard" title="No plans yet" />
           ) : (
             <table className="tbl">
@@ -260,7 +268,7 @@ export default function Planning() {
                 </tr>
               </thead>
               <tbody>
-                {plans.map((p) => (
+                {filteredPlans.map((p) => (
                   <tr key={p.id} className="click" onClick={() => open(p)}>
                     <td>
                       <b>{p.plan_no}</b>
@@ -287,7 +295,7 @@ export default function Planning() {
       </div>
 
       {view && (
-        <div className="veil center" onMouseDown={(e) => e.target === e.currentTarget && setView(null)}>
+        <div className="veil center">
           <div className="modal">
             <div className="modal-head">
               <h2>{view.plan_no}</h2>
