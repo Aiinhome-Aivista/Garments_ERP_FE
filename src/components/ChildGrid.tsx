@@ -35,7 +35,7 @@ export default function ChildGrid({ def, rows, onChange, form, disabled, errors 
         <table className="tbl grid-tbl">
           <thead>
             <tr>
-              <th className="sl">#</th>
+              <th className="sl">Sl No.</th>
               {cols.map((f) => (
                 <th key={f.name} className={["int", "decimal"].includes(f.type) ? "num" : ""}>
                   {f.label}

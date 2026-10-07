@@ -13,12 +13,31 @@ export function ExcelFilter({
 }) {
   const [search, setSearch] = useState("");
   const [accumulated, setAccumulated] = useState<Set<string>>(new Set());
+  const [labels, setLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!rows) return;
     setAccumulated((prev) => {
       const next = new Set(prev);
-      rows.forEach((r) => next.add(String(r[column] || "")));
+      rows.forEach((r) => {
+        const val = String(r[column] || "");
+        if (val) next.add(val);
+      });
+      return next;
+    });
+    setLabels((prev) => {
+      const next = { ...prev };
+      rows.forEach((r) => {
+        const val = String(r[column] || "");
+        if (!next[val]) {
+          const lbl = r[column + "__label"];
+          if (lbl !== undefined && lbl !== null) {
+            next[val] = String(lbl);
+          } else if (typeof r[column] === "boolean") {
+            next[val] = r[column] ? "Yes" : "No";
+          }
+        }
+      });
       return next;
     });
   }, [rows, column]);
@@ -28,10 +47,11 @@ export function ExcelFilter({
   }, [accumulated]);
 
   const filteredValues = useMemo(() => {
-    return allValues.filter((v) =>
-      v.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [allValues, search]);
+    return allValues.filter((v) => {
+      const displayVal = labels[v] || v;
+      return displayVal.toLowerCase().includes(search.toLowerCase());
+    });
+  }, [allValues, search, labels]);
 
   const currentSelection: string[] | null = filters[column] || null;
   const isAllSelected = currentSelection === null;
@@ -84,6 +104,7 @@ export function ExcelFilter({
         </label>
         {filteredValues.map((v) => {
           const checked = currentSelection === null || currentSelection.includes(v);
+          const displayVal = labels[v] || v;
           return (
             <label key={v} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
               <input
@@ -92,7 +113,7 @@ export function ExcelFilter({
                 onChange={() => toggleVal(v)}
                 style={{ width: "auto", margin: 0 }}
               />
-              {v || "(Blank)"}
+              {displayVal || "(Blank)"}
             </label>
           );
         })}

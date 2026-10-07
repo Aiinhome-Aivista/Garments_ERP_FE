@@ -258,7 +258,7 @@ export function RequisitionForm() {
           <table className="tbl grid-tbl">
             <thead>
               <tr>
-                <th className="sl">#</th>
+                <th className="sl">Sl No.</th>
                 <th style={{ width: 340 }}>Item</th>
                 <th>UOM</th>
                 <th className="num" style={{ width: 120 }}>

@@ -124,7 +124,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
                       onChange={(e) => toggleDoc(ls, e.target.checked)}
                     />
                   ) : (
-                    <input type="radio" name="one" checked={one === id} onChange={() => setOne(id)} />
+                    <input type="radio" name="one" checked={one === id} onClick={() => setOne(one === id ? "" : id)} onChange={() => {}} />
                   )}
                   <b style={{ font: "700 18px var(--f-head)" }}>{ls[0].src_no}</b>
                   <span className="muted">{fdate(ls[0].src_date)}</span>
@@ -909,7 +909,7 @@ export default function VoucherForm() {
           >
             <thead>
               <tr>
-                <th className="sl">#</th>
+                <th className="sl">Sl No.</th>
                 {colKeys.map((c) => (
                   <th
                     key={c}
@@ -978,7 +978,7 @@ export default function VoucherForm() {
           <table className="tbl grid-tbl">
             <thead>
               <tr>
-                <th className="sl">#</th>
+                <th className="sl">Sl No.</th>
                 <th style={{ width: 240 }}>Ledger name</th>
                 <th className="num" style={{ width: 110 }}>
                   Rate
