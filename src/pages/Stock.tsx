@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, fdate, qty } from "../api";
 import { OverlayPanel } from "primereact/overlaypanel";
 import { Empty, Skeleton } from "../components/Loaders";
@@ -10,6 +11,8 @@ export default function Stock() {
   const [mode, setMode] = useState<"product" | "lot">("product");
   const [q, setQ] = useState("");
   const [filters, setFilters] = useState<Record<string, string[]>>({});
+  const [searchParams] = useSearchParams();
+  const lowOnly = searchParams.get("low") === "true";
   const [category, setCategory] = useState<{ id: any; label: string }>({ id: "", label: "" });
   const [rows, setRows] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,6 +35,10 @@ export default function Stock() {
 
   const filteredRows = rows?.filter(r => {
     if (category.id && r.category !== category.label) return false;
+    if (lowOnly && mode === "product") {
+      const low = r.min_stock && r.free < r.min_stock;
+      if (!low) return false;
+    }
     for (const [k, v] of Object.entries(filters)) {
       if (!v || v.length === 0) continue;
       if (!v.includes(String(r[k] || ""))) return false;

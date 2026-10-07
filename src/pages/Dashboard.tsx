@@ -105,14 +105,14 @@ export default function Dashboard() {
           )}
           <hr className="seam" />
           <div className="kpis">
-            <div className="kpi">
+            <Link to="/stock?low=true" className="kpi" style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}>
               <b>{d.low_stock}</b>
               <span>items below minimum stock</span>
-            </div>
-            <div className="kpi">
+            </Link>
+            <Link to="/stock" className="kpi" style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}>
               <b>{qty(d.counts.stock_pcs)}</b>
               <span>units in stores</span>
-            </div>
+            </Link>
           </div>
         </div>
 

@@ -681,7 +681,8 @@ export default function VoucherForm() {
         <input
           className="n"
           inputMode="decimal"
-          value={row[c] ?? ""}
+          value={row[c] === 0 ? "" : (row[c] ?? "")}
+          placeholder="0"
           disabled={off}
           onChange={(e) => /^\d*\.?\d*$/.test(e.target.value) && setItem(i, { [c]: e.target.value })}
         />
@@ -1015,7 +1016,8 @@ export default function VoucherForm() {
                       className="n"
                       inputMode="decimal"
                       disabled={!editable}
-                      value={l.rate ?? ""}
+                      value={l.rate === 0 ? "" : (l.rate ?? "")}
+                      placeholder="0"
                       onChange={(e) =>
                         /^-?\d*\.?\d*$/.test(e.target.value) &&
                         setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate: e.target.value } : x)))

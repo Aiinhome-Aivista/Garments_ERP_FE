@@ -98,7 +98,7 @@ export default function Lookup({
   useLayoutEffect(() => {
     if (open && box.current) {
       const r = box.current.getBoundingClientRect();
-      setPos({ left: r.left, top: r.bottom + 2, width: Math.max(r.width, 240) });
+      setPos({ left: r.left + window.scrollX, top: r.bottom + window.scrollY + 2, width: Math.max(r.width, 240) });
     }
   }, [open, rows.length]);
 
@@ -150,6 +150,18 @@ export default function Lookup({
         }}
         onBlur={() => setTimeout(() => setOpen(false), 140)}
         onKeyDown={key}
+      />
+      <div
+        className={"lk-arrow" + (open ? " up" : "")}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          if (open) {
+            setOpen(false);
+          } else {
+            setOpen(true);
+            box.current?.querySelector("input")?.focus();
+          }
+        }}
       />
       {open &&
         pos &&

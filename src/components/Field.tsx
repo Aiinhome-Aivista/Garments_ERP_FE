@@ -72,7 +72,8 @@ export function Input({ f, value, label, onChange, compact, invalid, disabled }:
         <input
           inputMode="decimal"
           className={"n " + (invalid ? "err" : "")}
-          value={v}
+          value={v === 0 ? "" : v}
+          placeholder="0"
           disabled={disabled}
           onChange={(e) => /^-?\d*\.?\d*$/.test(e.target.value) && set(e.target.value)}
         />

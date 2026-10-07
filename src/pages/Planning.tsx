@@ -103,6 +103,17 @@ export default function Planning() {
     }
   };
 
+  const complete = async (p: any) => {
+    if (!confirm(`Complete production for plan ${p.plan_no}? This will consume reserved raw materials and receive finished goods into stock.`)) return;
+    try {
+      await api(`/planning/${p.id}/complete`, { method: "POST" });
+      toast("Production completed and stock updated.");
+      load();
+    } catch (e: any) {
+      toast(e.message, "err");
+    }
+  };
+
   const open = async (p: any) => setView(await api(`/planning/${p.id}`));
 
   return (
@@ -247,6 +258,7 @@ export default function Planning() {
           <select value={planStatus} onChange={(e) => setPlanStatus(e.target.value)} style={{ width: 140, marginLeft: "auto" }}>
             <option value="">All Statuses</option>
             <option value="Accepted">Accepted</option>
+            <option value="Completed">Completed</option>
             <option value="Cancelled">Cancelled</option>
           </select>
         </div>
@@ -280,9 +292,14 @@ export default function Planning() {
                       <span className={"htag " + p.status}>{p.status}</span>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
+                      {p.status === "Accepted" && can("planning", "edit") && (
+                        <button className="btn ghost sm" style={{ color: "var(--moss)", marginRight: 8 }} onClick={() => complete(p)}>
+                          Complete
+                        </button>
+                      )}
                       {p.status === "Accepted" && can("planning", "delete") && (
                         <button className="btn ghost sm" onClick={() => cancel(p)}>
-                          Cancel plan
+                          Cancel
                         </button>
                       )}
                     </td>
