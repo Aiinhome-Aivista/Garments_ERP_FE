@@ -101,18 +101,21 @@ export interface FieldProps {
   setForm: React.Dispatch<React.SetStateAction<any>>;
   error?: string;
   disabled?: boolean;
+  clearError?: () => void;
 }
 
-export function Field({ f, form, setForm, error, disabled }: FieldProps) {
+export function Field({ f, form, setForm, error, disabled, clearError }: FieldProps) {
   if (!showIf(f, form)) return null;
   if (f.type === "attrs") return <AttrPanel f={f} form={form} setForm={setForm} disabled={disabled} />;
 
-  const set = (val: any, row?: any) =>
+  const set = (val: any, row?: any) => {
     setForm((p: any) => ({
       ...p,
       [f.name]: val,
       [f.name + "__label"]: row ? row.label || row.name : undefined,
     }));
+    if (clearError) clearError();
+  };
 
   return (
     <label className={"fld" + (f.type === "textarea" ? " full" : "")}>

@@ -278,9 +278,22 @@ export default function VoucherForm() {
 
   const totals = useMemo(() => calcTotals(items, ledgers), [items, ledgers]);
 
-  const setHead = (patch: any) => setH((p: any) => ({ ...p, ...patch }));
+  const setHead = (patch: any) => {
+    setH((p: any) => ({ ...p, ...patch }));
+    setErr((e) => {
+      const next = { ...e };
+      let changed = false;
+      for (const k in patch) {
+        if (next[k]) {
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : e;
+    });
+  };
 
-  const setItem = (i: number, patch: any) =>
+  const setItem = (i: number, patch: any) => {
     setItems((rows) =>
       rows.map((r, j) => {
         if (j !== i) return r;
@@ -291,6 +304,19 @@ export default function VoucherForm() {
         return n;
       })
     );
+    setErr((e) => {
+      const next = { ...e };
+      let changed = false;
+      for (const k in patch) {
+        const fieldKey = `items.${i}.${k}`;
+        if (next[fieldKey]) {
+          delete next[fieldKey];
+          changed = true;
+        }
+      }
+      return changed ? next : e;
+    });
+  };
 
   const chooseType = async (tid: any, row: any) => {
     setHead({ txn_type_id: tid, txn_type_id__label: row?.label });

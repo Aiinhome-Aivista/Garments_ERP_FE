@@ -66,16 +66,7 @@ function MasterForm({ def, id, onClose, onSaved }: MasterFormProps) {
     }
   };
 
-  const remove = async () => {
-    if (!confirm("Delete this record? This can't be undone.")) return;
-    try {
-      await api(`/masters/${def.key}/${id}`, { method: "DELETE" });
-      toast("Deleted");
-      onSaved(null);
-    } catch (e: any) {
-      toast(e.message, "err");
-    }
-  };
+
 
   return (
     <div className="veil">
@@ -110,7 +101,15 @@ function MasterForm({ def, id, onClose, onSaved }: MasterFormProps) {
                     </label>
                   )}
                   {def.fields.map((f) => (
-                    <Field key={f.name} f={f} form={form} setForm={setForm} error={err[f.name]} disabled={!editable} />
+                    <Field key={f.name} f={f} form={form} setForm={setForm} error={err[f.name]} disabled={!editable} clearError={() => {
+                      if (err[f.name]) {
+                        setErr((e) => {
+                          const n = { ...e };
+                          delete n[f.name];
+                          return n;
+                        });
+                      }
+                    }} />
                   ))}
                   {id && (
                     <label className="fld">
@@ -141,11 +140,6 @@ function MasterForm({ def, id, onClose, onSaved }: MasterFormProps) {
           )}
         </div>
         <div className="drawer-foot">
-          {id && can(def.key, "delete") && (
-            <Btn className="ghost danger-cursor" icon="trash" onClick={remove} style={{ marginRight: "auto" }}>
-              Delete
-            </Btn>
-          )}
           <Btn className="ghost" onClick={onClose}>
             Cancel
           </Btn>
@@ -162,7 +156,7 @@ function MasterForm({ def, id, onClose, onSaved }: MasterFormProps) {
 
 export default function MasterList() {
   const { key } = useParams<{ key: string }>();
-  const { meta, can } = useApp();
+  const { meta, can, toast } = useApp();
   const def: MasterDef | undefined = meta?.masters?.[key || ""];
   const filterPanel = useRef<OverlayPanel>(null);
 
@@ -196,6 +190,18 @@ export default function MasterList() {
     setActive("1");
     setQ("");
   }, [key]);
+
+  const remove = async (e: React.MouseEvent, rId: number) => {
+    e.stopPropagation();
+    if (!confirm("Delete this record? This can't be undone.")) return;
+    try {
+      await api(`/masters/${key}/${rId}`, { method: "DELETE" });
+      toast("Deleted");
+      load();
+    } catch (err: any) {
+      toast(err.message, "err");
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => load().catch(() => setRows([])), 200);
@@ -313,6 +319,7 @@ export default function MasterList() {
                     />
                   </div>
                 </th>
+                {can(def.key, "delete") && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -336,6 +343,17 @@ export default function MasterList() {
                   <td>
                     <span className={"htag " + (r.active ? "Approved" : "Closed")}>{r.active ? "Active" : "Inactive"}</span>
                   </td>
+                  {can(def.key, "delete") && (
+                    <td onClick={(e) => e.stopPropagation()} style={{ width: 60, textAlign: "center" }}>
+                      <button 
+                        className="icon-btn del" 
+                        onClick={(e) => remove(e, r.id)}
+                        title="Delete"
+                      >
+                        <Icon name="trash" size={18} />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
