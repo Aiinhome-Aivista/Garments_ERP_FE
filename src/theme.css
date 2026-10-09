@@ -138,11 +138,14 @@ textarea { min-height: 60px; resize: vertical; }
 .btn.ghost { background: transparent; color: var(--denim-800); border: 1.5px solid var(--line); border-bottom-width: 1.5px; }
 [data-theme="dark"] .btn.ghost { color: var(--ink); }
 .btn.ghost:hover { background: var(--denim-100); }
+.btn.danger.ghost { color: var(--red); border-color: var(--red-soft); }
+.btn.danger.ghost:hover { background: var(--red-soft); color: #9a2b2b; border-color: var(--red); }
 .btn.red { background: var(--red); border-bottom-color: #7a1f1f; }
 .btn.sm { padding: 5px 10px; font-size: 13px; }
 .icon-btn { background: transparent; border: 0; padding: 5px; border-radius: 5px; color: var(--muted); display: inline-flex; }
 .icon-btn:hover { background: var(--denim-100); color: var(--denim-800); }
-.icon-btn.del:hover { background: var(--red-soft); color: var(--red); }
+.icon-btn.del:hover { background: var(--red-soft); color: #9a2b2b; }
+.icon-btn.del { color: var(--red); }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { border: 1.5px solid var(--line); background: var(--paper); border-radius: 999px; padding: 3px 12px; font: 600 13px var(--f-body); color: var(--muted); }

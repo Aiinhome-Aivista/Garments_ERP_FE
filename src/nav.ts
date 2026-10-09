@@ -56,7 +56,7 @@ export function buildNav(
       icon: m.icon || "button",
       res: m.key,
     }));
-  
+
   if (allMasters.length) {
     add("Masters", "hanger", allMasters);
   }
@@ -79,6 +79,6 @@ export function buildNav(
   Object.entries(byModule).forEach(([m, items]) =>
     add(m, m === "Sales" ? "receipt" : "cart", items)
   );
-  add("Admin", "key", [{ label: "Users & access", to: "/admin", icon: "users", res: "users" }]);
+  add("Admin", "key", [{ label: "Users & Access", to: "/admin", icon: "users", res: "users" }]);
   return groups;
 }

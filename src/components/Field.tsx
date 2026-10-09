@@ -15,6 +15,7 @@ export interface FieldDef {
   show_if?: Record<string, any[]>;
   filter?: Record<string, any>;
   depends?: string;
+  unique?: boolean;
 }
 
 export const showIf = (f: FieldDef, form: Record<string, any>): boolean =>
@@ -149,6 +150,12 @@ function AttrPanel({ f, form, setForm, disabled }: { f: FieldDef; form: Record<s
     setForm((p: any) => ({ ...p, [f.name]: { ...(p[f.name] || {}), [no]: v } }));
 
   const preview = [form.name, ...attrs.map((a) => vals[a.attr_no])].filter(Boolean).join("-");
+
+  useEffect(() => {
+    if (form.item_name !== preview) {
+      setForm((p: any) => ({ ...p, item_name: preview }));
+    }
+  }, [preview, form.item_name, setForm]);
 
   if (!cat) return <div className="full muted">Pick a category to fill in its attributes.</div>;
 

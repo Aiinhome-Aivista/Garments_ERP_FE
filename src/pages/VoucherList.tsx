@@ -95,7 +95,7 @@ export default function VoucherList() {
               <tr>
                 <th>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    Voucher no
+                    Voucher No
                     <i className="pi pi-caret-down" style={{ fontSize: "0.75rem", cursor: "pointer", color: filters.voucher_no ? "var(--denim-600)" : "var(--muted)" }} onClick={(e) => { setActiveFilterCol("voucher_no"); filterPanel.current?.toggle(e); }} />
                   </div>
                 </th>
@@ -118,7 +118,7 @@ export default function VoucherList() {
                   </div>
                 </th>
                 <th className="num">Qty</th>
-                <th className="num">Total value</th>
+                <th className="num">Total Value</th>
                 <th>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     Status

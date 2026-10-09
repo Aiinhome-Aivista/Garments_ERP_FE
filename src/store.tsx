@@ -107,9 +107,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const can = useCallback(
     (res: string, act = "view") => {
       const p = user?.permissions || {};
-      return "*" in p || (p[res] || []).some((a) => a === "*" || a === act);
+      if ("*" in p) return true;
+      if ((p[res] || []).some((a) => a === "*" || a === act)) return true;
+      
+      if (meta?.txn_types && meta?.vouchers) {
+        const voucherDef = meta.vouchers[res];
+        if (voucherDef) {
+          const matchingTxns = meta.txn_types.filter((t: any) => t.txn_kind === voucherDef.kind);
+          if (matchingTxns.length > 0) {
+            return matchingTxns.some((t: any) => {
+              const tRes = `txn_type_${t.id}`;
+              return (p[tRes] || []).some((a) => a === "*" || a === act);
+            });
+          }
+        }
+      }
+      return false;
     },
-    [user]
+    [user, meta]
   );
 
   const value = useMemo(

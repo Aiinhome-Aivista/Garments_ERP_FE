@@ -58,7 +58,7 @@ function Users() {
                 <th>Username</th>
                 <th>Name</th>
                 <th>Role</th>
-                <th>Last sign-in</th>
+                <th>Last Sign-In</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -159,18 +159,18 @@ function Roles() {
   }, [load]);
 
   const groups: [string, [string, string][]][] = [
-    ["Sales & procurement documents", Object.values(meta.vouchers).map((v: any) => [v.key, v.label])],
+    ["Sales & Procurement Documents", (meta.txn_types || []).map((t: any) => [`txn_type_${t.id}`, t.name])],
     [
       "Floor",
       [
-        ["planning", "Production planning"],
+        ["planning", "Production Planning"],
         ["requisition", "Requisition for PO"],
-        ["logistics", "Logistics updation"],
-        ["stock_report", "Stock report"],
+        ["logistics", "Logistics Updation"],
+        ["stock_report", "Stock Report"],
       ],
     ],
     ["Masters", Object.values(meta.masters).filter((m: any) => !m.hidden).map((m: any) => [m.key, m.label])],
-    ["Admin", [["users", "Users, roles & API keys"]]],
+    ["Admin", [["users", "Users, Roles & API Keys"]]],
   ];
 
   const has = (k: string, a: string) => ed?.permissions?.["*"] || (ed?.permissions?.[k] || []).includes(a);
@@ -331,7 +331,7 @@ function Keys() {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Key starts with</th>
+                <th>Key Starts With</th>
                 <th>Created</th>
                 <th />
               </tr>
@@ -418,7 +418,7 @@ export default function Admin() {
     <>
       <div className="page-head">
         <div className="grow">
-          <h1>Users & access</h1>
+          <h1>Users & Access</h1>
         </div>
       </div>
       <div className="tabs">

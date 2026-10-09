@@ -51,7 +51,77 @@ function MasterForm({ def, id, onClose, onSaved }: MasterFormProps) {
       });
   }, [id, def.key]); // eslint-disable-line
 
+  useEffect(() => {
+    if (!form) return;
+    const uniqueFields = def.fields.filter(f => f.unique || (def.key === "product" && f.name === "item_name"));
+    if (uniqueFields.length === 0) return;
+    
+    const getDuplicateMsg = (f: any, val: any) => {
+      if (def.key === "product" && f.name === "item_name") {
+        return `The variant "${val}" already exists for the product "${form.name}".`;
+      }
+      return `This ${f.label.toLowerCase()} already exists.`;
+    };
+
+    const timeout = setTimeout(() => {
+      uniqueFields.forEach(async (f) => {
+        const val = form[f.name];
+        if (!val) return;
+        try {
+          const r = await api<any>(`/masters/${def.key}?f_${f.name}=${encodeURIComponent(val)}&active=all`, { quiet: true });
+          const exists = r.rows?.find((row: any) => row.id !== id);
+          if (exists) {
+            setErr((e) => ({ ...e, [f.name]: getDuplicateMsg(f, val) }));
+          } else {
+             setErr((e) => {
+               if (e[f.name]?.includes("already exists")) {
+                 const n = { ...e };
+                 delete n[f.name];
+                 return n;
+               }
+               return e;
+             });
+          }
+        } catch (e) {
+          // ignore
+        }
+      });
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [form, def.fields, def.key, id]); // eslint-disable-line
+
   const save = async () => {
+    // Check for duplicates instantly before submitting to prevent race conditions with debounce
+    const uniqueFields = def.fields.filter(f => f.unique || (def.key === "product" && f.name === "item_name"));
+    let hasDuplicate = false;
+    const newErr: Record<string, string> = { ...err };
+    
+    const getDuplicateMsg = (f: any, val: any) => {
+      if (def.key === "product" && f.name === "item_name") {
+        return `The variant "${val}" already exists for the product "${form.name}".`;
+      }
+      return `This ${f.label.toLowerCase()} already exists.`;
+    };
+
+    for (const f of uniqueFields) {
+      const val = form[f.name];
+      if (val) {
+        try {
+          const r = await api<any>(`/masters/${def.key}?f_${f.name}=${encodeURIComponent(val)}&active=all`, { quiet: true });
+          if (r.rows?.find((row: any) => row.id !== id)) {
+            newErr[f.name] = getDuplicateMsg(f, val);
+            hasDuplicate = true;
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (hasDuplicate) {
+      setErr(newErr);
+      toast("Please fix the duplicate errors before saving.", "err");
+      return;
+    }
+    
     setBusy(true);
     setErr({});
     try {
