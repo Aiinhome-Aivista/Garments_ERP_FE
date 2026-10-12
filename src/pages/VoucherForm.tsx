@@ -59,6 +59,7 @@ interface SourcePickerProps {
 
 /* ------------------------------------------------------------- source picker */
 function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourcePickerProps) {
+  const { toast } = useApp();
   const [lines, setLines] = useState<any[] | null>(null);
   const [sel, setSel] = useState<Record<string, any>>({});
   const [one, setOne] = useState<any>(null);
@@ -78,14 +79,20 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
     return [...g.entries()];
   }, [lines]);
 
+  const hasStockCol = useMemo(() => (lines || []).some((l: any) => l.stock_qty !== undefined), [lines]);
+
   const key = (l: any) => l.src_item_id || l.req_item_id;
 
   const toggleDoc = (ls: any[], on: boolean) =>
     setSel((s) => {
       const n = { ...s };
       ls.forEach((l) => {
-        if (on) n[key(l)] = n[key(l)] ?? l.pending_qty;
-        else delete n[key(l)];
+        if (on) {
+          const pend = Number(l.pending_qty) || 0;
+          const maxAvail = l.stock_qty !== undefined ? Number(l.stock_qty) : Infinity;
+          const defTake = maxAvail !== Infinity ? Math.min(pend, Math.max(0, maxAvail)) : pend;
+          n[key(l)] = n[key(l)] ?? defTake;
+        } else delete n[key(l)];
       });
       return n;
     });
@@ -136,45 +143,95 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
                         {src.multi && <th />}
                         <th>Item</th>
                         <th className="num">Pending</th>
+                        {hasStockCol && <th className="num">Godown Stock</th>}
                         {src.multi && <th className="num">Take</th>}
                         <th className="num">Rate</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {ls.map((l: any) => (
-                        <tr key={key(l)}>
-                          {src.multi && (
-                            <td style={{ width: 30 }}>
-                              <input
-                                type="checkbox"
-                                checked={sel[key(l)] !== undefined}
-                                onChange={(e) => toggleDoc([l], e.target.checked)}
-                              />
+                      {ls.map((l: any) => {
+                        const isOver = l.stock_qty !== undefined && Number(sel[key(l)]) > Number(l.stock_qty);
+                        return (
+                          <tr key={key(l)}>
+                            {src.multi && (
+                              <td style={{ width: 30 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={sel[key(l)] !== undefined}
+                                  onChange={(e) => toggleDoc([l], e.target.checked)}
+                                />
+                              </td>
+                            )}
+                            <td>
+                              {l.item_name}
+                              {l.barcode && <span className="muted"> · {l.barcode}</span>}
                             </td>
-                          )}
-                          <td>
-                            {l.item_name}
-                            {l.barcode && <span className="muted"> · {l.barcode}</span>}
-                          </td>
-                          <td className="num">
-                            {fq(l.pending_qty)} {l.uom}
-                          </td>
-                          {src.multi && (
-                            <td style={{ width: 110 }}>
-                              <input
-                                className="n"
-                                style={{ textAlign: "right" }}
-                                disabled={sel[key(l)] === undefined}
-                                value={sel[key(l)] ?? ""}
-                                onChange={(e) =>
-                                  /^\d*\.?\d*$/.test(e.target.value) && setSel({ ...sel, [key(l)]: e.target.value })
-                                }
-                              />
+                            <td className="num">
+                              {fq(l.pending_qty)} {l.uom}
                             </td>
-                          )}
-                          <td className="num">{l.rate != null ? money(l.rate) : ""}</td>
-                        </tr>
-                      ))}
+                            {hasStockCol && (
+                              <td className="num">
+                                <span
+                                  style={{
+                                    fontWeight: 600,
+                                    fontSize: 13,
+                                    color: Number(l.stock_qty) > 0 ? "var(--moss, #16a34a)" : "var(--red, #dc2626)",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "flex-end",
+                                    gap: 5,
+                                  }}
+                                >
+                                  {Number(l.stock_qty) <= 0 ? (
+                                    <span
+                                      style={{
+                                        fontSize: 10,
+                                        background: "rgba(220, 38, 38, 0.12)",
+                                        color: "var(--red, #dc2626)",
+                                        padding: "1px 6px",
+                                        borderRadius: 4,
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      0 (Out of stock)
+                                    </span>
+                                  ) : (
+                                    fq(l.stock_qty)
+                                  )}
+                                </span>
+                              </td>
+                            )}
+                            {src.multi && (
+                              <td style={{ width: 110 }}>
+                                <input
+                                  className={`n ${isOver ? "err" : ""}`}
+                                  style={{
+                                    textAlign: "right",
+                                    borderColor: isOver ? "var(--red, #dc2626)" : undefined,
+                                    backgroundColor: isOver ? "rgba(239, 68, 68, 0.08)" : undefined,
+                                    color: isOver ? "var(--red, #dc2626)" : undefined,
+                                    fontWeight: isOver ? 700 : undefined,
+                                  }}
+                                  disabled={sel[key(l)] === undefined}
+                                  value={sel[key(l)] ?? ""}
+                                  onChange={(e) => {
+                                    if (!/^\d*\.?\d*$/.test(e.target.value)) return;
+                                    const val = e.target.value;
+                                    if (l.stock_qty !== undefined && Number(val) > Number(l.stock_qty)) {
+                                      toast(
+                                        `Only ${l.stock_qty} in stock for ${l.item_name}! Stock cannot be negative.`,
+                                        "err"
+                                      );
+                                    }
+                                    setSel({ ...sel, [key(l)]: val });
+                                  }}
+                                />
+                              </td>
+                            )}
+                            <td className="num">{l.rate != null ? money(l.rate) : ""}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -186,7 +243,22 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
           <Btn className="ghost" onClick={onClose}>
             Cancel
           </Btn>
-          <Btn className="tape" icon="check" disabled={!chosen.length} onClick={() => onPick(chosen.filter((c) => c.take > 0))}>
+          <Btn
+            className="tape"
+            icon="check"
+            disabled={!chosen.length}
+            onClick={() => {
+              const over = chosen.find((c) => c.stock_qty !== undefined && Number(c.take) > Number(c.stock_qty));
+              if (over) {
+                toast(
+                  `Line "${over.item_name}" quantity (${over.take}) exceeds available stock (${over.stock_qty})! Stock cannot be negative. Action blocked.`,
+                  "err"
+                );
+                return;
+              }
+              onPick(chosen.filter((c) => c.take > 0));
+            }}
+          >
             Add {chosen.length || ""} line{chosen.length === 1 ? "" : "s"}
           </Btn>
         </div>
@@ -227,19 +299,13 @@ export default function VoucherForm() {
 
   const base = useCallback(async () => {
     if (!doc || !cfg) return;
-    const tts = await api<any[]>(`/lookup/txn_type?f_txn_kind=${encodeURIComponent(cfg.kind)}&limit=5`);
-    const tt = tts[0];
-    const next = tt ? await api<{ voucher_no: string }>(`/vouchers/${doc}/next-number?txn_type_id=${tt.id}`) : null;
-    const tm = tt ? (await api<{ terms: any[] }>(`/masters/txn_type/${tt.id}`)).terms : [];
-
-    setH({ txn_type_id: tt?.id, txn_type_id__label: tt?.label, voucher_no: next?.voucher_no || "", voucher_date: today(), party_id: null });
+    setH({ txn_type_id: null, txn_type_id__label: "", voucher_no: "", voucher_date: today(), party_id: null });
     setItems(src?.required ? [] : [blankItem()]);
     setLedgers([]);
-    setTerms(tm.map((t: any) => ({ description: t.description })));
+    setTerms([]);
     setPays([]);
     setRec(null);
     setPicked([]);
-    if (!tt) toast(`Create a transaction type for “${cfg.kind}” first (Masters › Transaction types).`, "err");
   }, [doc, cfg]); // eslint-disable-line
 
   const hydrate = (v: any) => {
@@ -250,6 +316,22 @@ export default function VoucherForm() {
     setTerms(v.terms);
     setPays(v.payments);
     setPicked([...new Set(v.items.map((i: any) => i.src_header_id).filter(Boolean))]);
+    if (cfg?.stock < 0) {
+      v.items.forEach((it: any, idx: number) => {
+        if (it.product_id) {
+          api<{ balance: number }>(
+            `/stock/balance?product_id=${it.product_id}&barcode=${it.barcode || ""}&godown_id=${it.godown_id || ""}&bin_no=${it.bin_no || ""}`,
+            { quiet: true }
+          )
+            .then((res) => {
+              const curBal = Number(res.balance ?? 0);
+              const ownQty = v.approval_status === "Approved" ? Number(it.qty ?? 0) : 0;
+              setItem(idx, { stock_qty: curBal + ownQty });
+            })
+            .catch(() => {});
+        }
+      });
+    }
   };
 
   useEffect(() => {
@@ -336,22 +418,21 @@ export default function VoucherForm() {
       party_account: row?.ledger_account_id__label,
       party_state: row?.state,
     };
-    (cfg?.header || []).forEach((f: any) => {
-      if (f.party_default && row) {
-        patch[f.name] = row[f.party_default];
-        patch[f.name + "__label"] = row[f.party_default + "__label"];
-      }
-    });
     setHead(patch);
     pool.current = null;
   };
 
   const chooseProduct = async (i: number, pid: any, row: any) => {
     if (!pid) {
-      setItem(i, { product_id: null, product_id__label: "" });
+      setItem(i, { product_id: null, product_id__label: "", stock_qty: undefined });
       return;
     }
     setItem(i, { product_id: pid, product_id__label: row.label, uom: row.uom_id__label });
+    if (cfg?.stock < 0) {
+      api<{ balance: number }>(`/stock/balance?product_id=${pid}`, { quiet: true })
+        .then((res) => setItem(i, { stock_qty: Number(res.balance ?? 0) }))
+        .catch(() => {});
+    }
     if (h?.party_id) {
       const p = await api<any>(
         `/pricing/resolve?party_id=${h.party_id}&product_id=${pid}&date=${h.voucher_date}`,
@@ -363,8 +444,6 @@ export default function VoucherForm() {
           const n = { ...r };
           if (!Number(n.rate)) {
             n.rate = p.rate || "";
-            n.pricelist_id = p.pricelist_id;
-            n.pricelist_id__label = p.pricelist_label;
             n.disc_pct = p.disc_pct || "";
             n.disc_amt = p.disc_amt || "";
           }
@@ -399,6 +478,7 @@ export default function VoucherForm() {
     const n: any = {
       product_id: l.product_id,
       product_id__label: l.item_name,
+      stock_qty: l.stock_qty !== undefined ? Number(l.stock_qty) : undefined,
       uom: l.uom,
       description: l.description,
       customer_item_name: l.customer_item_name,
@@ -444,12 +524,6 @@ export default function VoucherForm() {
     setPicked((p) => [...new Set([...p, ...lines.map((l) => l.src_header_id).filter(Boolean)])]);
     pool.current = null;
     setPicker(false);
-    if (src.kind !== "requisition") {
-      const l0 = lines[0];
-      if (l0.h_salesman_id && !h.salesman_id && cfg.header.some((f: any) => f.name === "salesman_id")) {
-        setHead({ salesman_id: l0.h_salesman_id });
-      }
-    }
   };
 
   /* ---- barcode scan ---- */
@@ -483,6 +557,8 @@ export default function VoucherForm() {
     const lot = r.lots[0];
     const pr = r.product;
     if (!lot) return bad(`${pr.item_name} has no stock right now.`);
+    if (cfg.stock < 0 && Number(lot.balance) <= 0)
+      return bad(`No stock available for ${pr.item_name} (Barcode ${lot.barcode}). Current stock is 0.`);
     if (items.some((x) => x.barcode === lot.barcode && x.godown_id === lot.godown_id && (x.bin_no || "") === (lot.bin_no || "")))
       return bad(`Barcode ${lot.barcode} is already on this voucher.`);
 
@@ -495,6 +571,7 @@ export default function VoucherForm() {
       godown_id__label: lot.godown_label,
       bin_no: lot.bin_no,
       qty: q,
+      stock_qty: balance,
     });
 
     if (idx >= 0) {
@@ -572,6 +649,21 @@ export default function VoucherForm() {
   });
 
   const save = async () => {
+    if (cfg?.stock < 0) {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (!it.product_id) continue;
+        const q = Number(it.qty) || 0;
+        if (it.stock_qty !== undefined && q > Number(it.stock_qty)) {
+          const name = it.product_id__label || `Line ${i + 1}`;
+          toast(
+            `Insufficient stock for "${name}"! Quantity (${q}) exceeds available stock (${it.stock_qty}). Stock cannot be negative. Action blocked.`,
+            "err"
+          );
+          return;
+        }
+      }
+    }
     setBusy("save");
     setErr({});
     try {
@@ -698,7 +790,17 @@ export default function VoucherForm() {
           value={row[c]}
           label={row[c + "__label"]}
           disabled={off}
-          onChange={(v, r) => setItem(i, { [c]: v, [c + "__label"]: r?.label })}
+          onChange={(v, r) => {
+            setItem(i, { [c]: v, [c + "__label"]: r?.label });
+            if (c === "godown_id" && cfg?.stock < 0 && row.product_id) {
+              api<{ balance: number }>(
+                `/stock/balance?product_id=${row.product_id}&godown_id=${v || ""}&barcode=${row.barcode || ""}&bin_no=${row.bin_no || ""}`,
+                { quiet: true }
+              )
+                .then((res) => setItem(i, { stock_qty: Number(res.balance ?? 0) }))
+                .catch(() => {});
+            }
+          }}
         />
       );
     if (def.type === "date")
@@ -710,6 +812,49 @@ export default function VoucherForm() {
           onChange={(e) => setItem(i, { [c]: e.target.value || null })}
         />
       );
+    if (c === "qty") {
+      const isOutward = (cfg?.stock || 0) < 0;
+      const isOver = isOutward && row.stock_qty !== undefined && Number(row.qty) > Number(row.stock_qty);
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <input
+            className={`n ${isOver ? "err" : ""}`}
+            inputMode="decimal"
+            style={{
+              borderColor: isOver ? "var(--red, #dc2626)" : undefined,
+              backgroundColor: isOver ? "rgba(239, 68, 68, 0.08)" : undefined,
+              color: isOver ? "var(--red, #dc2626)" : undefined,
+              fontWeight: isOver ? 700 : undefined,
+            }}
+            value={row[c] === 0 ? "" : (row[c] ?? "")}
+            placeholder="0"
+            disabled={off}
+            onChange={(e) => {
+              if (!/^\d*\.?\d*$/.test(e.target.value)) return;
+              const val = e.target.value;
+              const numVal = Number(val) || 0;
+              if (isOutward && row.stock_qty !== undefined && numVal > Number(row.stock_qty)) {
+                toast(`Insufficient stock! Available in stock: ${row.stock_qty}. Stock cannot be negative.`, "err");
+              }
+              setItem(i, { [c]: val });
+            }}
+          />
+          {isOutward && row.stock_qty !== undefined && (
+            <span
+              style={{
+                fontSize: 11,
+                lineHeight: 1.1,
+                fontWeight: 600,
+                color: isOver ? "var(--red, #dc2626)" : "var(--moss, #16a34a)",
+                textAlign: "right",
+              }}
+            >
+              {isOver ? `⚠️ Max ${row.stock_qty}` : `Stock: ${row.stock_qty}`}
+            </span>
+          )}
+        </div>
+      );
+    }
     if (NUMERIC.includes(c))
       return (
         <input
@@ -1032,6 +1177,7 @@ export default function VoucherForm() {
                   <td>
                     <Lookup
                       master="ledger"
+                      filter={{ ledger_type: "General,Discount" }}
                       placeholder=""
                       value={l.ledger_id}
                       label={l.ledger_id__label}
@@ -1061,11 +1207,12 @@ export default function VoucherForm() {
                   <td>
                     <select
                       disabled={!editable}
-                      value={l.rate_in || "percent"}
+                      value={l.rate_in || ""}
                       onChange={(e) =>
                         setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate_in: e.target.value } : x)))
                       }
                     >
+                      <option value="">Select…</option>
                       {meta?.rate_in?.map((o: string) => (
                         <option key={o} value={o}>
                           {o === "percent" ? "Percent" : "Value"}
@@ -1076,11 +1223,12 @@ export default function VoucherForm() {
                   <td>
                     <select
                       disabled={!editable}
-                      value={l.rate_on || "auto"}
+                      value={l.rate_on || ""}
                       onChange={(e) =>
                         setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate_on: e.target.value } : x)))
                       }
                     >
+                      <option value="">Select…</option>
                       {meta?.rate_on?.map((o: any) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
@@ -1116,7 +1264,7 @@ export default function VoucherForm() {
               type="button"
               className="btn ghost sm"
               onClick={() =>
-                setLedgers([...ledgers, { rate: "", rate_in: "percent", rate_on: "total_product_value" }])
+                setLedgers([...ledgers, { ledger_id: null, ledger_id__label: "", rate: "", rate_in: "", rate_on: "" }])
               }
             >
               <Icon name="plus" size={16} />

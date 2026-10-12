@@ -56,9 +56,10 @@ export function Input({ f, value, label, onChange, compact, invalid, disabled }:
     case "select":
       return (
         <select value={v} disabled={disabled} className={invalid ? "err" : ""} onChange={(e) => set(e.target.value || null)}>
-          {(f.options || []).map((o) => (
+          <option value="">Select…</option>
+          {(f.options || []).filter(Boolean).map((o) => (
             <option key={o} value={o}>
-              {o || "—"}
+              {o}
             </option>
           ))}
         </select>

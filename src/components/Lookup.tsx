@@ -44,7 +44,7 @@ export default function Lookup({
   const [text, setText] = useState<string>(label || "");
   const [open, setOpen] = useState<boolean>(false);
   const [rows, setRows] = useState<LookupRow[]>([]);
-  const [hi, setHi] = useState<number>(0);
+  const [hi, setHi] = useState<number>(-1);
   const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const seq = useRef<number>(0);
@@ -87,7 +87,7 @@ export default function Lookup({
         .then((r) => {
           if (my === seq.current) {
             setRows(r);
-            setHi(0);
+            setHi(-1);
           }
         })
         .catch(() => {});
@@ -125,8 +125,8 @@ export default function Lookup({
       setHi((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter" && open) {
       e.preventDefault();
-      if (hi < rows.length) pick(rows[hi]);
-      else if (canAdd) add();
+      if (hi >= 0 && hi < rows.length) pick(rows[hi]);
+      else if (canAdd && hi === rows.length) add();
     } else if (e.key === "Escape") setOpen(false);
     else if (e.key === "Backspace" && !text && value) onChange(null, null);
   };

@@ -37,12 +37,26 @@ export default function Dashboard() {
   const { user, meta } = useApp();
   const nav = useNavigate();
   const [d, setD] = useState<DashboardData | null>(null);
+  const [tab, setTab] = useState<"all" | "sales" | "purchase">("all");
 
   useEffect(() => {
     api<DashboardData>("/dashboard").then(setD);
   }, []);
 
   if (!d) return <StitchLoader label="Counting the bolts…" />;
+
+  const isSales = (doc: string) => meta?.vouchers?.[doc]?.module === "Sales" || doc.startsWith("sales") || doc === "challan";
+  const isPurchase = (doc: string) => meta?.vouchers?.[doc]?.module === "Procurement" || doc.startsWith("purchase") || doc === "grn";
+
+  const allVouchers = d.recent || [];
+  const salesCount = allVouchers.filter((r) => isSales(r.doc_type)).length;
+  const purchaseCount = allVouchers.filter((r) => isPurchase(r.doc_type)).length;
+
+  const filteredVouchers = allVouchers.filter((r) => {
+    if (tab === "sales") return isSales(r.doc_type);
+    if (tab === "purchase") return isPurchase(r.doc_type);
+    return true;
+  });
 
   const max = Math.max(1, ...d.sales_trend.map((s) => s.v));
   const pend = Object.entries(d.pending_approvals);
@@ -136,11 +150,49 @@ export default function Dashboard() {
         </div>
 
         <div className="card" style={{ gridColumn: "1 / -1" }}>
-          <h3>Latest vouchers</h3>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+            <h3 style={{ margin: 0 }}>Latest vouchers</h3>
+            <div className="tabs" style={{ margin: 0, borderBottom: "none" }}>
+              <button
+                type="button"
+                className={tab === "all" ? "on" : ""}
+                style={{ cursor: "pointer", fontSize: "14px", padding: "6px 14px" }}
+                onClick={() => setTab("all")}
+              >
+                All ({allVouchers.length})
+              </button>
+              <button
+                type="button"
+                className={tab === "sales" ? "on" : ""}
+                style={{ cursor: "pointer", fontSize: "14px", padding: "6px 14px" }}
+                onClick={() => setTab("sales")}
+              >
+                Sales ({salesCount})
+              </button>
+              <button
+                type="button"
+                className={tab === "purchase" ? "on" : ""}
+                style={{ cursor: "pointer", fontSize: "14px", padding: "6px 14px" }}
+                onClick={() => setTab("purchase")}
+              >
+                Purchase ({purchaseCount})
+              </button>
+            </div>
+          </div>
           <div className="tbl-wrap">
             <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Voucher No</th>
+                  <th>Type</th>
+                  <th>Party Name</th>
+                  <th>Date</th>
+                  <th className="num">Total Value</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
               <tbody>
-                {d.recent.map((r) => (
+                {filteredVouchers.map((r) => (
                   <tr key={r.id} className="click" onClick={() => nav(`/vouchers/${r.doc_type}/${r.id}`)}>
                     <td>
                       <b>{r.voucher_no}</b>
@@ -154,10 +206,10 @@ export default function Dashboard() {
                     </td>
                   </tr>
                 ))}
-                {!d.recent.length && (
+                {!filteredVouchers.length && (
                   <tr>
-                    <td className="muted" style={{ padding: 16 }}>
-                      No vouchers yet — start with a sales order.
+                    <td colSpan={6} className="muted" style={{ padding: 24, textAlign: "center" }}>
+                      No {tab === "sales" ? "sales" : tab === "purchase" ? "purchase" : ""} vouchers to show.
                     </td>
                   </tr>
                 )}
