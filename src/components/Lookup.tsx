@@ -144,8 +144,8 @@ export default function Lookup({
           setOpen(true);
           if (!e.target.value && value) onChange(null, null);
         }}
+        onClick={() => setOpen((o) => !o)}
         onFocus={(e) => {
-          setOpen(true);
           e.target.select();
         }}
         onBlur={() => setTimeout(() => setOpen(false), 140)}
@@ -161,6 +161,10 @@ export default function Lookup({
             setOpen(true);
             box.current?.querySelector("input")?.focus();
           }
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
         }}
       />
       {open &&

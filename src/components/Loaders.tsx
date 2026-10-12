@@ -106,7 +106,7 @@ export interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Btn({ busy, icon, children, className = "", ...p }: BtnProps) {
   return (
-    <button className={"btn " + className} disabled={busy || p.disabled} {...p}>
+    <button className={"btn " + className} disabled={busy || p.disabled} aria-busy={busy || undefined} {...p}>
       {busy ? <Spool size={16} /> : icon && <Icon name={icon} size={17} />}
       {children}
     </button>

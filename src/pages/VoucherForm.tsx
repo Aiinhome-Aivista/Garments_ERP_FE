@@ -376,14 +376,22 @@ export default function VoucherForm() {
   };
 
   const choosePricelist = async (i: number, plid: any, row: any) => {
-    setItem(i, { pricelist_id: plid, pricelist_id__label: row?.label });
     const pid = items[i].product_id;
     if (plid && pid) {
+      setItem(i, { pricelist_id: plid, pricelist_id__label: row?.label });
       const r = await api<{ rate: any; disc_pct: any; disc_amt: any }>(
         `/pricing/pricelist-rate?pricelist_id=${plid}&product_id=${pid}`,
         { quiet: true }
       );
       setItem(i, { rate: r.rate || "", disc_pct: r.disc_pct || "", disc_amt: r.disc_amt || "" });
+    } else {
+      setItem(i, {
+        pricelist_id: plid,
+        pricelist_id__label: row?.label,
+        rate: "",
+        disc_pct: "",
+        disc_amt: ""
+      });
     }
   };
 
@@ -807,7 +815,6 @@ export default function VoucherForm() {
               disabled={!editable || (!isNew && items.some((i) => i.src_item_id))}
               invalid={!!err.party_id}
               onChange={chooseParty}
-              autoFocus={isNew}
             />
           </label>
           <label className="fld">
