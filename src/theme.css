@@ -88,6 +88,8 @@ label.fld .hint { font-weight: 500; font-size: 12px; }
 input, select, textarea { font: 500 15px var(--f-body); color: var(--ink); background: var(--paper); border: 1.5px solid var(--line); border-radius: 5px; padding: 7px 9px; width: 100%; min-width: 0; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--denim-600); box-shadow: 0 0 0 3px rgba(245,184,46,.45); }
 select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
   appearance: none;
   background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%235e6987" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpolyline points="6 9 12 15 18 9"%3E%3C/polyline%3E%3C/svg%3E');
   background-repeat: no-repeat;
@@ -126,7 +128,7 @@ th .pi-caret-down:before {
   border-color: var(--denim-600) !important;
   box-shadow: 0 0 0 3px rgba(245,184,46,.45) !important;
 }
-input[readonly], input:disabled, select:disabled { background: var(--denim-100); color: var(--muted); }
+input[readonly], input:disabled, select:disabled { background-color: var(--denim-100); color: var(--muted); }
 input.err, select.err { border-color: var(--red); }
 input[type=checkbox], input[type=radio] { width: 18px; height: 18px; accent-color: var(--denim-800); }
 input[type=checkbox]:focus, input[type=radio]:focus { box-shadow: none; }
@@ -171,9 +173,12 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 14.5px; }
 .tbl td.num, .tbl th.num { text-align: right; }
 .tbl tfoot td { font-weight: 700; background: var(--denim-100); }
 .grid-tbl td { padding: 3px 4px; } .grid-tbl th { padding: 8px 6px; }
-.grid-tbl input, .grid-tbl select { padding: 5px 7px; border-color: var(--line-soft); background: transparent; }
+.grid-tbl input { padding: 5px 7px; border-color: var(--line-soft); background: transparent; }
+.grid-tbl select { padding: 5px 7px; border-color: var(--line-soft); background-color: transparent; }
+.grid-tbl select { padding-right: 24px; background-position: right 6px center; }
 .grid-tbl input:hover, .grid-tbl select:hover { border-color: var(--line); }
-.grid-tbl input:focus, .grid-tbl select:focus { background: var(--paper); border-color: var(--denim-600); }
+.grid-tbl input:focus { background: var(--paper); border-color: var(--denim-600); }
+.grid-tbl select:focus { background-color: var(--paper); border-color: var(--denim-600); }
 .grid-tbl input.n { text-align: right; font-variant-numeric: tabular-nums; }
 .grid-tbl .sl { width: 52px; text-align: center; }
 .grid-tbl td.sl { color: var(--muted); }
@@ -197,7 +202,7 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 14.5px; }
 [data-theme="dark"] .lk-arrow {
   background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%239aa6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpolyline points="6 9 12 15 18 9"%3E%3C/polyline%3E%3C/svg%3E');
 }
-.lk input { padding-right: 28px; }
+.lk input { padding-right: 28px; background-image: none !important; }
 .lk-pop { position: absolute; z-index: 200; background: var(--paper); border: 1.5px solid var(--denim-800); border-radius: 6px; box-shadow: 0 14px 30px -10px rgba(0,0,0,.4); max-height: 280px; overflow-y: auto; }
 .lk-pop div { padding: 7px 10px; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; }
 .lk-pop div.on { background: var(--tape); color: var(--denim-950); }

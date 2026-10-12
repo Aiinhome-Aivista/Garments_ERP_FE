@@ -1032,6 +1032,7 @@ export default function VoucherForm() {
                   <td>
                     <Lookup
                       master="ledger"
+                      placeholder=""
                       value={l.ledger_id}
                       label={l.ledger_id__label}
                       disabled={!editable}
