@@ -51,24 +51,37 @@ function beep(ok = true) {
 interface SourcePickerProps {
   doc: string;
   src: any;
+  isOutward?: boolean;
   partyId?: number | null;
+  partyLabel?: string | null;
   excludeId?: string | number | null;
   onClose: () => void;
   onPick: (lines: any[]) => void;
 }
 
 /* ------------------------------------------------------------- source picker */
-function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourcePickerProps) {
+function SourcePicker({ doc, src, isOutward = false, partyId, partyLabel, excludeId, onClose, onPick }: SourcePickerProps) {
   const { toast } = useApp();
   const [lines, setLines] = useState<any[] | null>(null);
   const [sel, setSel] = useState<Record<string, any>>({});
   const [one, setOne] = useState<any>(null);
 
   useEffect(() => {
+    if (src.kind !== "requisition" && !partyId) {
+      setLines([]);
+      return;
+    }
     api<any[]>(
       `/vouchers/${doc}/pending-source${qs({ party_id: src.kind === "requisition" ? "" : partyId, exclude: excludeId || 0 })}`
-    ).then(setLines);
-  }, []); // eslint-disable-line
+    ).then((res) => {
+      const filtered = (res || []).filter((l: any) => {
+        if (src.kind === "requisition") return true;
+        if (!partyId) return false;
+        return String(l.party_id) === String(partyId);
+      });
+      setLines(filtered);
+    });
+  }, [doc, partyId, excludeId]);
 
   const groups = useMemo(() => {
     const g = new Map<any, any[]>();
@@ -79,7 +92,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
     return [...g.entries()];
   }, [lines]);
 
-  const hasStockCol = useMemo(() => (lines || []).some((l: any) => l.stock_qty !== undefined), [lines]);
+  const hasStockCol = useMemo(() => isOutward && (lines || []).some((l: any) => l.stock_qty !== undefined), [lines, isOutward]);
 
   const key = (l: any) => l.src_item_id || l.req_item_id;
 
@@ -89,7 +102,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
       ls.forEach((l) => {
         if (on) {
           const pend = Number(l.pending_qty) || 0;
-          const maxAvail = l.stock_qty !== undefined ? Number(l.stock_qty) : Infinity;
+          const maxAvail = isOutward && l.stock_qty !== undefined ? Number(l.stock_qty) : Infinity;
           const defTake = maxAvail !== Infinity ? Math.min(pend, Math.max(0, maxAvail)) : pend;
           n[key(l)] = n[key(l)] ?? defTake;
         } else delete n[key(l)];
@@ -106,7 +119,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
       <div className="modal">
         <div className="modal-head">
           <Icon name="clipboard" size={24} />
-          <h2>Pick from {src.label.toLowerCase()}</h2>
+          <h2>Pick from {src.label.toLowerCase()}{partyLabel ? ` · ${partyLabel}` : ""}</h2>
           <button className="icon-btn" onClick={onClose}>
             <Icon name="x" />
           </button>
@@ -117,7 +130,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
           ) : !groups.length ? (
             <div className="banner">
               <Icon name="alert" size={18} />
-              Nothing pending{src.kind !== "requisition" && !partyId ? " — choose the party first" : " for this party"}.
+              Nothing pending{partyLabel ? ` for "${partyLabel}"` : " for this party"}.
               Only approved documents with balance quantity show up here.
             </div>
           ) : (
@@ -135,6 +148,21 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
                   )}
                   <b style={{ font: "700 18px var(--f-head)" }}>{ls[0].src_no}</b>
                   <span className="muted">{fdate(ls[0].src_date)}</span>
+                  {ls[0].party_name && (
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        background: "var(--denim-100, #e0e7ff)",
+                        color: "var(--denim-800, #3730a3)",
+                        padding: "2px 8px",
+                        borderRadius: 4,
+                        marginLeft: 6,
+                      }}
+                    >
+                      {ls[0].party_name}
+                    </span>
+                  )}
                 </label>
                 <div className="tbl-wrap">
                   <table className="tbl">
@@ -150,7 +178,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
                     </thead>
                     <tbody>
                       {ls.map((l: any) => {
-                        const isOver = l.stock_qty !== undefined && Number(sel[key(l)]) > Number(l.stock_qty);
+                        const isOver = isOutward && l.stock_qty !== undefined && Number(sel[key(l)]) > Number(l.stock_qty);
                         return (
                           <tr key={key(l)}>
                             {src.multi && (
@@ -217,7 +245,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
                                   onChange={(e) => {
                                     if (!/^\d*\.?\d*$/.test(e.target.value)) return;
                                     const val = e.target.value;
-                                    if (l.stock_qty !== undefined && Number(val) > Number(l.stock_qty)) {
+                                    if (isOutward && l.stock_qty !== undefined && Number(val) > Number(l.stock_qty)) {
                                       toast(
                                         `Only ${l.stock_qty} in stock for ${l.item_name}! Stock cannot be negative.`,
                                         "err"
@@ -248,7 +276,7 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
             icon="check"
             disabled={!chosen.length}
             onClick={() => {
-              const over = chosen.find((c) => c.stock_qty !== undefined && Number(c.take) > Number(c.stock_qty));
+              const over = isOutward && chosen.find((c) => c.stock_qty !== undefined && Number(c.take) > Number(c.stock_qty));
               if (over) {
                 toast(
                   `Line "${over.item_name}" quantity (${over.take}) exceeds available stock (${over.stock_qty})! Stock cannot be negative. Action blocked.`,
@@ -267,13 +295,20 @@ function SourcePicker({ doc, src, partyId, excludeId, onClose, onPick }: SourceP
   );
 }
 
-/* ------------------------------------------------------------- main form */
 export default function VoucherForm() {
   const { doc, id } = useParams<{ doc: string; id: string }>();
   const nav = useNavigate();
-  const { meta, can, toast } = useApp();
+  const { user, meta, can, toast } = useApp();
   const cfg = meta?.vouchers?.[doc || ""];
   const cols = meta?.item_cols || {};
+
+  const canOverrideRate = useMemo(() => {
+    if (!user) return false;
+    if (user.role === "Admin" || (user.permissions && "*" in user.permissions)) return true;
+    if (can("override_rate") || can("rate_override")) return true;
+    if (doc && (can(doc, "override_rate") || can(doc, "rate_override"))) return true;
+    return false;
+  }, [user, doc, can]);
 
   const [h, setH] = useState<any | null>(null);
   const [items, setItems] = useState<any[]>([]);
@@ -316,6 +351,23 @@ export default function VoucherForm() {
     setTerms(v.terms);
     setPays(v.payments);
     setPicked([...new Set(v.items.map((i: any) => i.src_header_id).filter(Boolean))]);
+    if (v.items) {
+      v.items.forEach((it: any, idx: number) => {
+        if (it.product_id) {
+          api<any>(
+            `/pricing/resolve?party_id=${v.party_id || ""}&product_id=${it.product_id}&date=${v.voucher_date || ""}`,
+            { quiet: true }
+          )
+            .then((p) => {
+              setItem(idx, {
+                has_pricelist: !!p.has_pricelist,
+                available_pricelists: p.available_pricelists || [],
+              });
+            })
+            .catch(() => {});
+        }
+      });
+    }
     if (cfg?.stock < 0) {
       v.items.forEach((it: any, idx: number) => {
         if (it.product_id) {
@@ -380,9 +432,27 @@ export default function VoucherForm() {
       rows.map((r, j) => {
         if (j !== i) return r;
         const n = { ...r, ...patch };
-        if ("disc_pct" in patch && Number(patch.disc_pct) > 0) n.disc_amt = calcItem(n).disc_amt;
-        if ("disc_amt" in patch) n.disc_pct = "";
-        Object.assign(n, calcItem(n));
+        if ("disc_pct" in patch) {
+          if (Number(patch.disc_pct) > 0) {
+            n.disc_amt = calcItem(n).disc_amt;
+          } else {
+            n.disc_amt = "";
+          }
+        } else if ("disc_amt" in patch) {
+          n.disc_pct = "";
+          if (patch.disc_amt === "" || Number(patch.disc_amt) <= 0) {
+            n.disc_amt = "";
+          }
+        } else if (Number(n.disc_pct) > 0) {
+          n.disc_amt = calcItem(n).disc_amt;
+        }
+        const calc = calcItem(n);
+        n.net_amount = calc.net_amount;
+        if (Number(n.disc_pct) > 0) {
+          n.disc_amt = calc.disc_amt;
+        } else if (n.disc_amt === "" || Number(n.disc_amt) === 0) {
+          n.disc_amt = "";
+        }
         return n;
       })
     );
@@ -418,13 +488,28 @@ export default function VoucherForm() {
       party_account: row?.ledger_account_id__label,
       party_state: row?.state,
     };
+    if (src && pid !== h.party_id) {
+      setItems([]);
+      setPicked([]);
+    }
     setHead(patch);
     pool.current = null;
   };
 
   const chooseProduct = async (i: number, pid: any, row: any) => {
     if (!pid) {
-      setItem(i, { product_id: null, product_id__label: "", stock_qty: undefined });
+      setItem(i, {
+        product_id: null,
+        product_id__label: "",
+        stock_qty: undefined,
+        has_pricelist: false,
+        available_pricelists: [],
+        pricelist_id: null,
+        pricelist_id__label: "",
+        rate: "",
+        disc_pct: "",
+        disc_amt: "",
+      });
       return;
     }
     setItem(i, { product_id: pid, product_id__label: row.label, uom: row.uom_id__label });
@@ -433,36 +518,62 @@ export default function VoucherForm() {
         .then((res) => setItem(i, { stock_qty: Number(res.balance ?? 0) }))
         .catch(() => {});
     }
-    if (h?.party_id) {
+    try {
       const p = await api<any>(
-        `/pricing/resolve?party_id=${h.party_id}&product_id=${pid}&date=${h.voucher_date}`,
+        `/pricing/resolve?party_id=${h?.party_id || ""}&product_id=${pid}&date=${h?.voucher_date || ""}`,
         { quiet: true }
       );
       setItems((rows) =>
         rows.map((r, j) => {
           if (j !== i) return r;
           const n = { ...r };
-          if (!Number(n.rate)) {
-            n.rate = p.rate || "";
-            n.disc_pct = p.disc_pct || "";
-            n.disc_amt = p.disc_amt || "";
+          n.has_pricelist = !!p.has_pricelist;
+          n.available_pricelists = p.available_pricelists || [];
+          if (p.pricelist_id) {
+            n.pricelist_id = p.pricelist_id;
+            n.pricelist_id__label = p.pricelist_label;
+            n.rate = p.rate !== undefined ? p.rate : "";
+            n.disc_pct = p.disc_pct !== undefined ? p.disc_pct : "";
+            n.disc_amt = p.disc_amt !== undefined ? p.disc_amt : "";
+          } else if (!p.has_pricelist) {
+            n.pricelist_id = null;
+            n.pricelist_id__label = "";
           }
           if (!n.customer_item_name && p.customer_item_name) n.customer_item_name = p.customer_item_name;
           return { ...n, ...calcItem(n) };
         })
       );
+    } catch {
+      // offline / fallback
     }
   };
 
   const choosePricelist = async (i: number, plid: any, row: any) => {
-    const pid = items[i].product_id;
+    const pid = items[i]?.product_id;
     if (plid && pid) {
       setItem(i, { pricelist_id: plid, pricelist_id__label: row?.label });
-      const r = await api<{ rate: any; disc_pct: any; disc_amt: any }>(
-        `/pricing/pricelist-rate?pricelist_id=${plid}&product_id=${pid}`,
-        { quiet: true }
-      );
-      setItem(i, { rate: r.rate || "", disc_pct: r.disc_pct || "", disc_amt: r.disc_amt || "" });
+      try {
+        const r = await api<{ rate: any; disc_pct: any; disc_amt: any }>(
+          `/pricing/pricelist-rate?pricelist_id=${plid}&product_id=${pid}&party_id=${h?.party_id || ""}&date=${h?.voucher_date || ""}`,
+          { quiet: true }
+        );
+        setItems((rows) =>
+          rows.map((cur, j) => {
+            if (j !== i) return cur;
+            const updated = {
+              ...cur,
+              pricelist_id: plid,
+              pricelist_id__label: row?.label,
+              rate: r.rate !== undefined ? r.rate : "",
+              disc_pct: r.disc_pct !== undefined ? r.disc_pct : "",
+              disc_amt: r.disc_amt !== undefined ? r.disc_amt : "",
+            };
+            return { ...updated, ...calcItem(updated) };
+          })
+        );
+      } catch {
+        // fallback
+      }
     } else {
       setItem(i, {
         pricelist_id: plid,
@@ -533,7 +644,9 @@ export default function VoucherForm() {
         `/vouchers/${doc}/pending-source${qs({ party_id: h.party_id, exclude: id || 0 })}`,
         { quiet: true }
       );
-      pool.current = all.filter((l) => picked.includes(l.src_header_id));
+      pool.current = all.filter(
+        (l) => picked.includes(l.src_header_id) && (!h.party_id || String(l.party_id) === String(h.party_id))
+      );
     }
     return pool.current || [];
   };
@@ -649,6 +762,18 @@ export default function VoucherForm() {
   });
 
   const save = async () => {
+    if (doc === "sales_order" || doc === "purchase_order") {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.product_id && it.has_pricelist && !it.pricelist_id) {
+          toast(
+            `Line ${i + 1}: Price list is mandatory for "${it.product_id__label || "selected item"}" as a price list is configured for it.`,
+            "err"
+          );
+          return;
+        }
+      }
+    }
     if (cfg?.stock < 0) {
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
@@ -747,7 +872,11 @@ export default function VoucherForm() {
         </span>
       );
     if (["ref_no", "indent_no", "src_no"].includes(c))
-      return <span className="muted" style={{ padding: "0 8px" }}>{row[c]}</span>;
+      return (
+        <span style={{ padding: "0 8px", fontWeight: 700, color: "var(--denim-900, #0f172a)", whiteSpace: "nowrap" }}>
+          {row[c] || "—"}
+        </span>
+      );
     if (c === "barcode")
       return cfg.auto_barcode ? (
         <span className="muted" style={{ padding: "0 8px" }}>
@@ -772,16 +901,20 @@ export default function VoucherForm() {
           onChange={(v, r) => chooseProduct(i, v, r)}
         />
       );
-    if (c === "pricelist_id")
+    if (c === "pricelist_id") {
+      const isMandatory = (doc === "sales_order" || doc === "purchase_order") && !!row.has_pricelist;
       return (
         <Lookup
           master="pricelist"
           value={row.pricelist_id}
           label={row.pricelist_id__label}
           disabled={off}
+          invalid={isMandatory && !row.pricelist_id}
+          placeholder={isMandatory ? "Select price list *" : "Search…"}
           onChange={(v, r) => choosePricelist(i, v, r)}
         />
       );
+    }
     if (def.type === "ref")
       return (
         <Lookup
@@ -855,17 +988,23 @@ export default function VoucherForm() {
         </div>
       );
     }
-    if (NUMERIC.includes(c))
+    if (NUMERIC.includes(c)) {
+      const isRateLocked = (c === "rate" && Boolean(row.pricelist_id)) || (["disc_pct", "disc_amt"].includes(c) && Boolean(row.pricelist_id) && !canOverrideRate);
+      const isDisabled = off || isRateLocked;
       return (
         <input
-          className="n"
+          className={`n ${isRateLocked ? "readonly-locked" : ""}`}
           inputMode="decimal"
           value={row[c] === 0 ? "" : (row[c] ?? "")}
           placeholder="0"
-          disabled={off}
+          disabled={isDisabled}
+          readOnly={isRateLocked}
+          title={isRateLocked ? "Rate is auto-populated from price list and cannot be edited" : ""}
+          style={isRateLocked ? { backgroundColor: "var(--denim-100, #e1e7f5)", cursor: "not-allowed", opacity: 0.9 } : undefined}
           onChange={(e) => /^\d*\.?\d*$/.test(e.target.value) && setItem(i, { [c]: e.target.value })}
         />
       );
+    }
     return <input value={row[c] ?? ""} disabled={off} onChange={(e) => setItem(i, { [c]: e.target.value })} />;
   };
 
@@ -1369,7 +1508,9 @@ export default function VoucherForm() {
         <SourcePicker
           doc={doc!}
           src={src}
-          partyId={h.party_id}
+          isOutward={(cfg?.stock || 0) < 0}
+          partyId={h?.party_id}
+          partyLabel={h?.party_id__label}
           excludeId={id}
           onClose={() => setPicker(false)}
           onPick={onPick}

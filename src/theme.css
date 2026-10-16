@@ -56,6 +56,13 @@ button:disabled { cursor: not-allowed; } button[aria-busy="true"] { cursor: prog
 .side.collapsed .nav-item { justify-content: center; padding: 9px 0; gap: 0; }
 .nav-item:hover { background: rgba(255,255,255,.08); }
 .nav-item.active { background: var(--tape); color: var(--denim-950); font-weight: 600; }
+.nav-subgroup { margin-left: 8px; }
+.side.collapsed .nav-subgroup { margin-left: 0; }
+.nav-sub-title { font: 600 14.5px var(--f-head); color: var(--tape); margin: 10px 0 4px 6px; letter-spacing: .05em; display: flex; align-items: center; gap: 7px; white-space: nowrap; cursor: pointer; padding: 4px 6px; border-radius: 4px; transition: background .15s ease; }
+.nav-sub-title:hover { background: rgba(255,255,255,.07); }
+.side.collapsed .nav-sub-title { justify-content: center; margin: 10px 0 4px 0; padding: 4px 0; }
+.nav-item.nav-sub-item { padding-left: 20px; font-size: 14px; }
+.side.collapsed .nav-item.nav-sub-item { padding-left: 0; }
 .main { min-width: 0; display: flex; flex-direction: column; }
 .top { position: sticky; top: 0; z-index: 20; background: var(--paper); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; padding: 10px 24px 16px; }
 .top::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 9px; background: var(--tape); background-image: var(--tape-ticks); background-size: 100% 4px, 100% 9px; background-repeat: repeat-x; background-position: bottom; opacity: .95; }
@@ -105,8 +112,8 @@ input[placeholder*="search" i] {
   background-color: #ffffff !important;
   background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%235e6987" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Ccircle cx="11" cy="11" r="8"%3E%3C/circle%3E%3Cline x1="21" y1="21" x2="16.65" y2="16.65"%3E%3C/line%3E%3C/svg%3E');
   background-repeat: no-repeat;
-  background-position: 10px center;
-  padding-left: 34px;
+  background-position: 8px center;
+  padding-left: 28px;
 }
 input[placeholder*="search" i]:focus {
   border-color: var(--denim-600) !important;
@@ -202,7 +209,7 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 14.5px; }
 [data-theme="dark"] .lk-arrow {
   background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%239aa6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Cpolyline points="6 9 12 15 18 9"%3E%3C/polyline%3E%3C/svg%3E');
 }
-.lk input { padding-right: 28px; background-image: none !important; }
+.lk input { padding-left: 9px !important; padding-right: 28px; background-image: none !important; }
 .lk-pop { position: absolute; z-index: 200; background: var(--paper); border: 1.5px solid var(--denim-800); border-radius: 6px; box-shadow: 0 14px 30px -10px rgba(0,0,0,.4); max-height: 280px; overflow-y: auto; }
 .lk-pop div { padding: 7px 10px; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; }
 .lk-pop div.on { background: var(--tape); color: var(--denim-950); }
@@ -283,7 +290,7 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 14.5px; }
 .login-art p { max-width: 38ch; color: var(--denim-300); font-size: 17px; }
 .login-art .tape-side { position: absolute; right: 0; top: 0; bottom: 0; width: 26px; background: var(--tape); background-image: repeating-linear-gradient(0deg, var(--denim-900) 0 1px, transparent 1px 8px), repeating-linear-gradient(0deg, var(--denim-900) 0 2px, transparent 2px 40px); background-size: 12px 100%, 22px 100%; background-repeat: no-repeat; background-position: right, right; }
 .login-form { display: grid; place-items: center; padding: 30px; } .login-form .card { width: min(400px, 100%); }
-.perm-grid { display: grid; grid-template-columns: 1fr repeat(5, 62px); align-items: center; gap: 2px 6px; font-size: 14px; }
+.perm-grid { display: grid; grid-template-columns: 1fr repeat(auto-fit, minmax(70px, 1fr)); align-items: center; gap: 2px 6px; font-size: 14px; }
 .perm-grid .h { font: 700 14px var(--f-head); text-align: center; } .perm-grid > div:nth-child(6n+1) { padding: 3px 4px; }
 .perm-grid .grp { grid-column: 1 / -1; font: 700 15px var(--f-head); color: var(--denim-600); margin-top: 8px; border-bottom: 1px dashed var(--line); }
 

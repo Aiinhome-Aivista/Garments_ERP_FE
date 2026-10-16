@@ -157,19 +157,6 @@ function MasterForm({ def, id, onClose, onSaved }: MasterFormProps) {
             <>
               <div className="card">
                 <div className="grid">
-                  {def.hierarchical && (
-                    <label className="fld span2">
-                      <span>Parent (optional)</span>
-                      <Lookup
-                        master={def.key}
-                        value={form.parent_id}
-                        label={form.parent__label}
-                        disabled={!editable}
-                        placeholder="Top level"
-                        onChange={(v, r) => setForm({ ...form, parent_id: v, parent__label: r?.label })}
-                      />
-                    </label>
-                  )}
                   {def.fields.map((f) => (
                     <Field key={f.name} f={f} form={form} setForm={setForm} error={err[f.name]} disabled={!editable} clearError={() => {
                       if (err[f.name]) {
@@ -181,6 +168,19 @@ function MasterForm({ def, id, onClose, onSaved }: MasterFormProps) {
                       }
                     }} />
                   ))}
+                  {def.hierarchical && (
+                    <label className="fld">
+                      <span>Parent (optional)</span>
+                      <Lookup
+                        master={def.key}
+                        value={form.parent_id}
+                        label={form.parent__label}
+                        disabled={!editable}
+                        placeholder="Top level"
+                        onChange={(v, r) => setForm({ ...form, parent_id: v, parent__label: r?.label })}
+                      />
+                    </label>
+                  )}
                   {id && (
                     <label className="fld">
                       <span>Active</span>
@@ -365,6 +365,18 @@ export default function MasterList() {
                     </div>
                   </th>
                 )}
+                {def.hierarchical && (
+                  <th>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      Parent
+                      <i
+                        className="pi pi-caret-down"
+                        style={{ fontSize: "0.75rem", cursor: "pointer", color: filters.parent__label ? "var(--denim-600)" : "var(--muted)" }}
+                        onClick={(e) => { setActiveFilterCol("parent__label"); filterPanel.current?.toggle(e); }}
+                      />
+                    </div>
+                  </th>
+                )}
                 {cols.map((f) =>
                   def.hierarchical && f.name === "name" ? null : (
                     <th key={f.name} className={["int", "decimal"].includes(f.type) ? "num" : ""}>
@@ -401,6 +413,11 @@ export default function MasterList() {
                         <Icon name={r.depth ? "shirt" : "hanger"} size={16} style={{ color: "var(--denim-300)" }} />
                         <b>{r.name}</b>
                       </span>
+                    </td>
+                  )}
+                  {def.hierarchical && (
+                    <td>
+                      <span className="muted">{r.parent__label || "—"}</span>
                     </td>
                   )}
                   {cols.map((f) =>

@@ -18,7 +18,13 @@ function Palette({ nav, onClose }: PaletteProps) {
   const all = useMemo(
     () =>
       nav
-        .flatMap((g) => g.items.map((i) => ({ ...i, group: g.title })))
+        .flatMap((g) => {
+          const direct = (g.items || []).map((i) => ({ ...i, group: g.title }));
+          const sub = (g.subGroups || []).flatMap((sg) =>
+            (sg.items || []).map((i) => ({ ...i, group: `${g.title} > ${sg.title}` }))
+          );
+          return [...direct, ...sub];
+        })
         .concat([{ label: "Dashboard", to: "/dashboard", icon: "loom", group: "Home", res: "" }]),
     [nav]
   );
@@ -169,18 +175,51 @@ export default function Layout() {
                 </span>
               )}
             </div>
-            {opened[g.title] &&
-              g.items.map((i: NavItem) => (
-                <NavLink
-                  key={i.to}
-                  to={i.to}
-                  className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}
-                  title={i.label}
-                >
-                  <Icon name={i.icon || "button"} size={19} />
-                  {!collapsed && <span>{i.label}</span>}
-                </NavLink>
-              ))}
+            {opened[g.title] && (
+              <>
+                {g.items?.map((i: NavItem) => (
+                  <NavLink
+                    key={i.to}
+                    to={i.to}
+                    className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}
+                    title={i.label}
+                  >
+                    <Icon name={i.icon || "button"} size={19} />
+                    {!collapsed && <span>{i.label}</span>}
+                  </NavLink>
+                ))}
+                {g.subGroups?.map((sub) => (
+                  <div key={sub.title} className="nav-subgroup">
+                    <div
+                      className="nav-sub-title"
+                      role="button"
+                      title={sub.title}
+                      onClick={() => setOpened((c) => ({ ...c, [sub.title]: !c[sub.title] }))}
+                    >
+                      <Icon name={sub.icon} size={16} />
+                      {!collapsed && <span>{sub.title}</span>}
+                      {!collapsed && (
+                        <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.6 }}>
+                          {!opened[sub.title] ? "▶" : "▼"}
+                        </span>
+                      )}
+                    </div>
+                    {opened[sub.title] &&
+                      sub.items?.map((i: NavItem) => (
+                        <NavLink
+                          key={i.to}
+                          to={i.to}
+                          className={({ isActive }) => "nav-item nav-sub-item" + (isActive ? " active" : "")}
+                          title={i.label}
+                        >
+                          <Icon name={i.icon || "button"} size={19} />
+                          {!collapsed && <span>{i.label}</span>}
+                        </NavLink>
+                      ))}
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         ))}
         <div style={{ marginTop: "auto" }} />

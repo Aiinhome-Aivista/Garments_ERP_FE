@@ -233,9 +233,9 @@ function Roles() {
               This role has full access to everything.
             </p>
           ) : (
-            <div className="perm-grid" style={{ marginTop: 12 }}>
+            <div className="perm-grid" style={{ marginTop: 12, gridTemplateColumns: `1fr repeat(${(meta.actions || []).length}, 90px)`, overflowX: "auto" }}>
               <div />
-              <>{meta.actions.map((a: string) => <div key={a} className="h">{a}</div>)}</>
+              <>{(meta.actions || []).map((a: string) => <div key={a} className="h" style={{ textTransform: "capitalize", whiteSpace: "nowrap" }}>{a.replace("_", " ")}</div>)}</>
               {groups.map(([g, items]) => (
                 <React.Fragment key={g}>
                   <div className="grp">{g}</div>

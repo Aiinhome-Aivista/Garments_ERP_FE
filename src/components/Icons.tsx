@@ -173,6 +173,12 @@ const P: Record<string, React.ReactNode> = {
       <path d="M11 12l9-9M16 7l3 3" />
     </>
   ),
+  transactions: (
+    <>
+      <path d="M8 7h12m0 0l-4-4m4 4l-4 4" />
+      <path d="M16 17H4m0 0l4-4m-4 4l4 4" />
+    </>
+  ),
   layers: (
     <>
       <path d="M12 3l9 5-9 5-9-5z" />

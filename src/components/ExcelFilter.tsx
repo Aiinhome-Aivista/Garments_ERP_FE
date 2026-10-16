@@ -90,7 +90,7 @@ export function ExcelFilter({
         placeholder="Search here"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "100%", padding: "6px", paddingLeft: "34px", fontSize: 14 }}
+        style={{ width: "100%", padding: "6px", paddingLeft: "28px", fontSize: 14 }}
       />
       <div style={{ maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 600 }}>

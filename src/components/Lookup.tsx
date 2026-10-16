@@ -86,6 +86,17 @@ export default function Lookup({
       )
         .then((r) => {
           if (my === seq.current) {
+            if (master === "generic_type") {
+              const genericTypeOrder = ["size", "parts", "colour", "color", "pattern", "sleeves", "collection"];
+              r.sort((a, b) => {
+                const ia = genericTypeOrder.indexOf((a.label || a.name || "").toLowerCase());
+                const ib = genericTypeOrder.indexOf((b.label || b.name || "").toLowerCase());
+                if (ia !== -1 && ib !== -1) return ia - ib;
+                if (ia !== -1) return -1;
+                if (ib !== -1) return 1;
+                return (a.label || a.name || "").localeCompare(b.label || b.name || "");
+              });
+            }
             setRows(r);
             setHi(-1);
           }
