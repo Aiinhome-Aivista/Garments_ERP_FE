@@ -31,18 +31,51 @@ const KEEP = [
   "indent_no",
 ];
 
-function beep(ok = true) {
+let sharedAudioCtx: AudioContext | null = null;
+function getAudioContext(): AudioContext | null {
   try {
-    const a = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (!sharedAudioCtx) {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtxClass) {
+        sharedAudioCtx = new AudioCtxClass();
+      }
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
+function playOscillator(a: AudioContext, ok: boolean) {
+  try {
     const o = a.createOscillator();
     const g = a.createGain();
-    o.frequency.value = ok ? 1480 : 240;
-    o.type = ok ? "square" : "sawtooth";
-    g.gain.value = 0.05;
+    o.frequency.value = ok ? 1480 : 280;
+    o.type = ok ? "sine" : "sawtooth";
+    const now = a.currentTime;
+    g.gain.setValueAtTime(0.25, now);
+    g.gain.exponentialRampToValueAtTime(0.005, now + (ok ? 0.12 : 0.28));
     o.connect(g);
     g.connect(a.destination);
-    o.start();
-    o.stop(a.currentTime + (ok ? 0.08 : 0.25));
+    o.start(now);
+    o.stop(now + (ok ? 0.12 : 0.28));
+  } catch {
+    /* ignored */
+  }
+}
+
+function beep(ok = true) {
+  try {
+    const a = getAudioContext();
+    if (!a) return;
+    if (a.state === "suspended") {
+      a.resume().then(() => playOscillator(a, ok)).catch(() => {});
+    } else {
+      playOscillator(a, ok);
+    }
   } catch {
     /* audio blocked */
   }
@@ -55,16 +88,25 @@ interface SourcePickerProps {
   partyId?: number | null;
   partyLabel?: string | null;
   excludeId?: string | number | null;
+  existingKeys?: Set<string>;
   onClose: () => void;
   onPick: (lines: any[]) => void;
 }
 
-/* ------------------------------------------------------------- source picker */
-function SourcePicker({ doc, src, isOutward = false, partyId, partyLabel, excludeId, onClose, onPick }: SourcePickerProps) {
+/* ------------------------------------------------------------- source picker (flat table format) */
+function SourcePicker({ doc, src, isOutward = false, partyId, partyLabel, excludeId, existingKeys, onClose, onPick }: SourcePickerProps) {
   const { toast } = useApp();
   const [lines, setLines] = useState<any[] | null>(null);
   const [sel, setSel] = useState<Record<string, any>>({});
   const [one, setOne] = useState<any>(null);
+
+  // Filters
+  const [q, setQ] = useState("");
+  const [filterOrder, setFilterOrder] = useState("");
+  const [filterItem, setFilterItem] = useState("");
+  const [filterParty, setFilterParty] = useState("");
+  const [filterDesc, setFilterDesc] = useState("");
+  const [inStockOnly, setInStockOnly] = useState(false);
 
   useEffect(() => {
     if (src.kind !== "requisition" && !partyId) {
@@ -74,174 +116,416 @@ function SourcePicker({ doc, src, isOutward = false, partyId, partyLabel, exclud
     api<any[]>(
       `/vouchers/${doc}/pending-source${qs({ party_id: src.kind === "requisition" ? "" : partyId, exclude: excludeId || 0 })}`
     ).then((res) => {
-      const filtered = (res || []).filter((l: any) => {
-        if (src.kind === "requisition") return true;
-        if (!partyId) return false;
-        return String(l.party_id) === String(partyId);
-      });
+      const filtered = (res || [])
+        .filter((l: any) => {
+          if (src.kind === "requisition") return true;
+          if (!partyId) return false;
+          return String(l.party_id) === String(partyId);
+        })
+        .filter((l: any) => {
+          const k = String(l.src_item_id || l.req_item_id);
+          return !existingKeys || !existingKeys.has(k);
+        });
       setLines(filtered);
     });
-  }, [doc, partyId, excludeId]);
+  }, [doc, partyId, excludeId, src.kind, existingKeys]);
 
-  const groups = useMemo(() => {
-    const g = new Map<any, any[]>();
-    (lines || []).forEach((l) => {
-      if (!g.has(l.src_header_id)) g.set(l.src_header_id, []);
-      g.get(l.src_header_id)!.push(l);
-    });
-    return [...g.entries()];
-  }, [lines]);
+  const key = (l: any) => String(l.src_item_id || l.req_item_id);
 
   const hasStockCol = useMemo(() => isOutward && (lines || []).some((l: any) => l.stock_qty !== undefined), [lines, isOutward]);
+  const hasPartyCol = useMemo(
+    () => src.kind === "requisition" || (lines || []).some((l: any) => l.party_name && String(l.party_id) !== String(partyId)),
+    [lines, src.kind, partyId]
+  );
+  const hasDescCol = useMemo(() => (lines || []).some((l: any) => l.description), [lines]);
+  const hasIndentCol = useMemo(() => (lines || []).some((l: any) => l.indent_no || l.ref_no || l.delivery_date), [lines]);
 
-  const key = (l: any) => l.src_item_id || l.req_item_id;
+  // Real-time filtered lines
+  const filteredLines = useMemo(() => {
+    if (!lines) return [];
+    return lines.filter((l) => {
+      if (inStockOnly && isOutward && l.stock_qty !== undefined && Number(l.stock_qty) <= 0) return false;
+      if (filterOrder && !(l.src_no || "").toLowerCase().includes(filterOrder.toLowerCase())) return false;
+      if (filterItem) {
+        const itemMatch =
+          (l.item_name || "").toLowerCase().includes(filterItem.toLowerCase()) ||
+          (l.barcode || "").toLowerCase().includes(filterItem.toLowerCase());
+        if (!itemMatch) return false;
+      }
+      if (filterParty && !(l.party_name || "").toLowerCase().includes(filterParty.toLowerCase())) return false;
+      if (filterDesc && !(l.description || "").toLowerCase().includes(filterDesc.toLowerCase())) return false;
+      if (q) {
+        const term = q.toLowerCase();
+        const fullMatch =
+          (l.src_no || "").toLowerCase().includes(term) ||
+          (l.item_name || "").toLowerCase().includes(term) ||
+          (l.barcode || "").toLowerCase().includes(term) ||
+          (l.party_name || "").toLowerCase().includes(term) ||
+          (l.description || "").toLowerCase().includes(term) ||
+          (l.indent_no || "").toLowerCase().includes(term) ||
+          (l.ref_no || "").toLowerCase().includes(term);
+        if (!fullMatch) return false;
+      }
+      return true;
+    });
+  }, [lines, inStockOnly, isOutward, filterOrder, filterItem, filterParty, filterDesc, q]);
 
-  const toggleDoc = (ls: any[], on: boolean) =>
-    setSel((s) => {
-      const n = { ...s };
-      ls.forEach((l) => {
+  const hasActiveFilters = Boolean(q || filterOrder || filterItem || filterParty || filterDesc || inStockOnly);
+
+  const clearFilters = () => {
+    setQ("");
+    setFilterOrder("");
+    setFilterItem("");
+    setFilterParty("");
+    setFilterDesc("");
+    setInStockOnly(false);
+  };
+
+  const getDefaultTake = (l: any) => {
+    const pend = Number(l.pending_qty) || 0;
+    const maxAvail = isOutward && l.stock_qty !== undefined ? Number(l.stock_qty) : Infinity;
+    return maxAvail !== Infinity ? Math.min(pend, Math.max(0, maxAvail)) : pend;
+  };
+
+  const toggleRow = (l: any, checked?: boolean) => {
+    if (!src.multi) {
+      setOne(one === l.src_header_id ? null : l.src_header_id);
+      return;
+    }
+    const k = key(l);
+    const shouldSelect = checked !== undefined ? checked : sel[k] === undefined;
+    setSel((cur) => {
+      const n = { ...cur };
+      if (shouldSelect) {
+        n[k] = n[k] ?? getDefaultTake(l);
+      } else {
+        delete n[k];
+      }
+      return n;
+    });
+  };
+
+  const isAllFilteredSelected = filteredLines.length > 0 && filteredLines.every((l) => sel[key(l)] !== undefined);
+  const isSomeFilteredSelected = filteredLines.some((l) => sel[key(l)] !== undefined);
+
+  const toggleSelectAllFiltered = (on: boolean) => {
+    setSel((cur) => {
+      const n = { ...cur };
+      filteredLines.forEach((l) => {
+        const k = key(l);
         if (on) {
-          const pend = Number(l.pending_qty) || 0;
-          const maxAvail = isOutward && l.stock_qty !== undefined ? Number(l.stock_qty) : Infinity;
-          const defTake = maxAvail !== Infinity ? Math.min(pend, Math.max(0, maxAvail)) : pend;
-          n[key(l)] = n[key(l)] ?? defTake;
-        } else delete n[key(l)];
+          n[k] = n[k] ?? getDefaultTake(l);
+        } else {
+          delete n[k];
+        }
       });
       return n;
     });
+  };
 
-  const chosen = src.multi
-    ? (lines || []).filter((l) => sel[key(l)] !== undefined).map((l) => ({ ...l, take: Number(sel[key(l)]) || 0 }))
-    : (groups.find(([id]) => id === one)?.[1] || []).map((l) => ({ ...l, take: Number(l.pending_qty) }));
+  // Chosen lines for export
+  const chosen = useMemo(() => {
+    if (!lines) return [];
+    if (src.multi) {
+      return lines.filter((l) => sel[key(l)] !== undefined).map((l) => ({ ...l, take: Number(sel[key(l)]) || 0 }));
+    }
+    return lines.filter((l) => l.src_header_id === one).map((l) => ({ ...l, take: Number(l.pending_qty) || 0 }));
+  }, [lines, sel, one, src.multi]);
+
+  const totalChosenQty = useMemo(() => {
+    return chosen.reduce((acc, c) => acc + (Number(c.take) || 0), 0);
+  }, [chosen]);
+
+  const colCount = 5 + (hasPartyCol ? 1 : 0) + (hasDescCol ? 1 : 0) + (hasStockCol ? 1 : 0) + (src.multi ? 1 : 0) + (hasIndentCol ? 1 : 0);
 
   return (
     <div className="veil center">
-      <div className="modal">
+      <div className="modal modal-xl">
         <div className="modal-head">
           <Icon name="clipboard" size={24} />
           <h2>Pick from {src.label.toLowerCase()}{partyLabel ? ` · ${partyLabel}` : ""}</h2>
-          <button className="icon-btn" onClick={onClose}>
+          <button className="icon-btn" onClick={onClose} title="Close">
             <Icon name="x" />
           </button>
         </div>
         <div className="modal-body">
           {lines === null ? (
-            <Skeleton rows={5} />
-          ) : !groups.length ? (
+            <Skeleton rows={6} />
+          ) : !lines.length ? (
             <div className="banner">
               <Icon name="alert" size={18} />
-              Nothing pending{partyLabel ? ` for "${partyLabel}"` : " for this party"}.
-              Only approved documents with balance quantity show up here.
+              {existingKeys && existingKeys.size > 0
+                ? "All pending lines from the selected documents are already added to this voucher."
+                : `Nothing pending${partyLabel ? ` for "${partyLabel}"` : " for this party"}. Only approved documents with balance quantity show up here.`}
             </div>
           ) : (
-            groups.map(([id, ls]) => (
-              <div key={id} className="section" style={{ marginTop: 10 }}>
-                <label className="row pick" style={{ marginBottom: 4 }}>
-                  {src.multi ? (
+            <>
+              {/* Controls & Filter Bar */}
+              <div className="picker-filter-bar">
+                <div style={{ flex: 1, minWidth: 260, maxWidth: 400 }}>
+                  <input
+                    className="picker-filter-input"
+                    placeholder={`Search all ${src.label.toLowerCase()} lines…`}
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+                {hasStockCol && (
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
                     <input
                       type="checkbox"
-                      checked={ls.every((l: any) => sel[key(l)] !== undefined)}
-                      onChange={(e) => toggleDoc(ls, e.target.checked)}
+                      checked={inStockOnly}
+                      onChange={(e) => setInStockOnly(e.target.checked)}
                     />
-                  ) : (
-                    <input type="radio" name="one" checked={one === id} onClick={() => setOne(one === id ? "" : id)} onChange={() => {}} />
-                  )}
-                  <b style={{ font: "700 18px var(--f-head)" }}>{ls[0].src_no}</b>
-                  <span className="muted">{fdate(ls[0].src_date)}</span>
-                  {ls[0].party_name && (
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        background: "var(--denim-100, #e0e7ff)",
-                        color: "var(--denim-800, #3730a3)",
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        marginLeft: 6,
-                      }}
-                    >
-                      {ls[0].party_name}
+                    <span>In-stock only</span>
+                  </label>
+                )}
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    className="btn ghost sm"
+                    style={{ padding: "4px 10px", fontSize: 12 }}
+                    onClick={clearFilters}
+                  >
+                    <Icon name="x" size={14} /> Clear filters
+                  </button>
+                )}
+                <div style={{ flex: 1 }} />
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  Showing <b>{filteredLines.length}</b> of <b>{lines.length}</b> pending line{lines.length === 1 ? "" : "s"}
+                  {chosen.length > 0 && (
+                    <span style={{ color: "var(--denim-800)", fontWeight: 700, marginLeft: 6 }}>
+                      · {chosen.length} selected ({fq(totalChosenQty)} qty)
                     </span>
                   )}
-                </label>
-                <div className="tbl-wrap">
-                  <table className="tbl">
-                    <thead>
+                </span>
+              </div>
+
+              {/* Standard Flat Table */}
+              <div className="tbl-wrap" style={{ maxHeight: "calc(88vh - 220px)", overflow: "auto" }}>
+                <table className="tbl grid-tbl" style={{ minWidth: 960 }}>
+                  <thead style={{ position: "sticky", top: 0, zIndex: 5 }}>
+                    <tr>
+                      <th style={{ width: 44, textAlign: "center" }}>
+                        {src.multi ? (
+                          <input
+                            type="checkbox"
+                            checked={isAllFilteredSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = isSomeFilteredSelected && !isAllFilteredSelected;
+                            }}
+                            onChange={(e) => toggleSelectAllFiltered(e.target.checked)}
+                            title="Select / deselect all filtered rows"
+                          />
+                        ) : (
+                          <span>Select</span>
+                        )}
+                      </th>
+                      <th style={{ width: 140 }}>{src.no_label || "Order No"}</th>
+                      <th style={{ width: 105 }}>Date</th>
+                      {hasPartyCol && <th style={{ width: 160 }}>Party</th>}
+                      <th style={{ minWidth: 200 }}>Item Name</th>
+                      {hasDescCol && <th style={{ width: 150 }}>Description</th>}
+                      <th className="num" style={{ width: 105 }}>Pending Qty</th>
+                      {hasStockCol && <th className="num" style={{ width: 110 }}>Godown Stock</th>}
+                      {src.multi && <th className="num" style={{ width: 115 }}>Take Qty</th>}
+                      <th className="num" style={{ width: 95 }}>Rate</th>
+                      <th className="num" style={{ width: 85 }}>Disc</th>
+                      {hasIndentCol && <th style={{ width: 130 }}>Indent / Ref</th>}
+                    </tr>
+                    <tr className="tbl-filter-row">
+                      <th style={{ textAlign: "center" }}>
+                        {hasActiveFilters && (
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            style={{ width: 22, height: 22, padding: 0 }}
+                            title="Clear column filters"
+                            onClick={clearFilters}
+                          >
+                            <Icon name="x" size={12} />
+                          </button>
+                        )}
+                      </th>
+                      <th>
+                        <input
+                          placeholder="Filter order…"
+                          value={filterOrder}
+                          onChange={(e) => setFilterOrder(e.target.value)}
+                        />
+                      </th>
+                      <th />
+                      {hasPartyCol && (
+                        <th>
+                          <input
+                            placeholder="Filter party…"
+                            value={filterParty}
+                            onChange={(e) => setFilterParty(e.target.value)}
+                          />
+                        </th>
+                      )}
+                      <th>
+                        <input
+                          placeholder="Filter item/barcode…"
+                          value={filterItem}
+                          onChange={(e) => setFilterItem(e.target.value)}
+                        />
+                      </th>
+                      {hasDescCol && (
+                        <th>
+                          <input
+                            placeholder="Filter desc…"
+                            value={filterDesc}
+                            onChange={(e) => setFilterDesc(e.target.value)}
+                          />
+                        </th>
+                      )}
+                      <th />
+                      {hasStockCol && <th />}
+                      {src.multi && <th />}
+                      <th />
+                      <th />
+                      {hasIndentCol && <th />}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!filteredLines.length ? (
                       <tr>
-                        {src.multi && <th />}
-                        <th>Item</th>
-                        <th className="num">Pending</th>
-                        {hasStockCol && <th className="num">Godown Stock</th>}
-                        {src.multi && <th className="num">Take</th>}
-                        <th className="num">Rate</th>
+                        <td colSpan={colCount} className="empty" style={{ padding: 30, textAlign: "center" }}>
+                          No pending lines match the filter criteria.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {ls.map((l: any) => {
-                        const isOver = isOutward && l.stock_qty !== undefined && Number(sel[key(l)]) > Number(l.stock_qty);
+                    ) : (
+                      filteredLines.map((l: any) => {
+                        const k = key(l);
+                        const isSelected = src.multi ? sel[k] !== undefined : one === l.src_header_id;
+                        const isOver = isOutward && l.stock_qty !== undefined && Number(sel[k]) > Number(l.stock_qty);
+
                         return (
-                          <tr key={key(l)}>
-                            {src.multi && (
-                              <td style={{ width: 30 }}>
+                          <tr
+                            key={k}
+                            className={`click ${isSelected ? "row-selected" : ""}`}
+                            onClick={() => toggleRow(l)}
+                          >
+                            <td style={{ textAlign: "center", width: 44 }}>
+                              {src.multi ? (
                                 <input
                                   type="checkbox"
-                                  checked={sel[key(l)] !== undefined}
-                                  onChange={(e) => toggleDoc([l], e.target.checked)}
+                                  checked={sel[k] !== undefined}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleRow(l, e.target.checked);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
                                 />
+                              ) : (
+                                <input
+                                  type="radio"
+                                  name="onePicker"
+                                  checked={one === l.src_header_id}
+                                  onChange={() => {}}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOne(one === l.src_header_id ? null : l.src_header_id);
+                                  }}
+                                />
+                              )}
+                            </td>
+                            <td>
+                              <b style={{ font: "700 13.5px var(--f-head)", color: "var(--denim-900)" }}>
+                                {l.src_no}
+                              </b>
+                            </td>
+                            <td>
+                              <span className="muted">{fdate(l.src_date)}</span>
+                            </td>
+                            {hasPartyCol && (
+                              <td>
+                                {l.party_name ? (
+                                  <span
+                                    style={{
+                                      fontSize: 11.5,
+                                      fontWeight: 600,
+                                      background: "var(--denim-100, #e0e7ff)",
+                                      color: "var(--denim-800, #3730a3)",
+                                      padding: "2px 6px",
+                                      borderRadius: 4,
+                                      display: "inline-block",
+                                    }}
+                                  >
+                                    {l.party_name}
+                                  </span>
+                                ) : (
+                                  <span className="muted">—</span>
+                                )}
                               </td>
                             )}
                             <td>
-                              {l.item_name}
-                              {l.barcode && <span className="muted"> · {l.barcode}</span>}
-                            </td>
-                            <td className="num">
-                              {fq(l.pending_qty)} {l.uom}
-                            </td>
-                            {hasStockCol && (
-                              <td className="num">
-                                <span
-                                  style={{
-                                    fontWeight: 600,
-                                    fontSize: 13,
-                                    color: Number(l.stock_qty) > 0 ? "var(--moss, #16a34a)" : "var(--red, #dc2626)",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "flex-end",
-                                    gap: 5,
-                                  }}
-                                >
-                                  {Number(l.stock_qty) <= 0 ? (
-                                    <span
-                                      style={{
-                                        fontSize: 10,
-                                        background: "rgba(220, 38, 38, 0.12)",
-                                        color: "var(--red, #dc2626)",
-                                        padding: "1px 6px",
-                                        borderRadius: 4,
-                                        fontWeight: 700,
-                                      }}
-                                    >
-                                      0 (Out of stock)
+                              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                                <b>{l.item_name}</b>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                                  {l.barcode && (
+                                    <span className="muted" style={{ fontSize: 11, fontFamily: "ui-monospace,monospace" }}>
+                                      {l.barcode}
                                     </span>
-                                  ) : (
-                                    fq(l.stock_qty)
                                   )}
+                                  {l.customer_item_name && (
+                                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                                      ({l.customer_item_name})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            {hasDescCol && (
+                              <td>
+                                <span className="muted" style={{ fontSize: 12 }}>
+                                  {l.description || "—"}
                                 </span>
                               </td>
                             )}
+                            <td className="num">
+                              <span style={{ fontWeight: 600 }}>{fq(l.pending_qty)}</span>{" "}
+                              <span className="muted" style={{ fontSize: 11 }}>{l.uom}</span>
+                            </td>
+                            {hasStockCol && (
+                              <td className="num">
+                                {Number(l.stock_qty) <= 0 ? (
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      background: "rgba(220, 38, 38, 0.12)",
+                                      color: "var(--red, #dc2626)",
+                                      padding: "1px 6px",
+                                      borderRadius: 4,
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    0 (Out of stock)
+                                  </span>
+                                ) : (
+                                  <span style={{ fontWeight: 600, color: "var(--moss, #16a34a)" }}>
+                                    {fq(l.stock_qty)}
+                                  </span>
+                                )}
+                              </td>
+                            )}
                             {src.multi && (
-                              <td style={{ width: 110 }}>
+                              <td style={{ width: 115 }} onClick={(e) => e.stopPropagation()}>
                                 <input
                                   className={`n ${isOver ? "err" : ""}`}
                                   style={{
                                     textAlign: "right",
+                                    width: "100%",
                                     borderColor: isOver ? "var(--red, #dc2626)" : undefined,
                                     backgroundColor: isOver ? "rgba(239, 68, 68, 0.08)" : undefined,
                                     color: isOver ? "var(--red, #dc2626)" : undefined,
                                     fontWeight: isOver ? 700 : undefined,
                                   }}
-                                  disabled={sel[key(l)] === undefined}
-                                  value={sel[key(l)] ?? ""}
+                                  disabled={sel[k] === undefined}
+                                  value={sel[k] ?? ""}
+                                  placeholder="0"
                                   onChange={(e) => {
                                     if (!/^\d*\.?\d*$/.test(e.target.value)) return;
                                     const val = e.target.value;
@@ -251,26 +535,47 @@ function SourcePicker({ doc, src, isOutward = false, partyId, partyLabel, exclud
                                         "err"
                                       );
                                     }
-                                    setSel({ ...sel, [key(l)]: val });
+                                    setSel({ ...sel, [k]: val });
                                   }}
                                 />
                               </td>
                             )}
-                            <td className="num">{l.rate != null ? money(l.rate) : ""}</td>
+                            <td className="num">{l.rate != null && l.rate !== "" ? money(l.rate) : "—"}</td>
+                            <td className="num">
+                              {Number(l.disc_pct) > 0
+                                ? `${l.disc_pct}%`
+                                : Number(l.disc_amt) > 0
+                                ? money(l.disc_amt)
+                                : "—"}
+                            </td>
+                            {hasIndentCol && (
+                              <td>
+                                <span style={{ fontSize: 12, fontFamily: "ui-monospace,monospace" }}>
+                                  {l.indent_no || l.ref_no || (l.delivery_date ? fdate(l.delivery_date) : "—")}
+                                </span>
+                              </td>
+                            )}
                           </tr>
                         );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
-            ))
+            </>
           )}
         </div>
         <div className="modal-foot">
-          <Btn className="ghost" onClick={onClose}>
-            Cancel
-          </Btn>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Btn className="ghost" onClick={onClose}>
+              Cancel
+            </Btn>
+            {chosen.length > 0 && (
+              <span className="muted" style={{ fontSize: 13 }}>
+                <b>{chosen.length}</b> line{chosen.length === 1 ? "" : "s"} selected · <b>{fq(totalChosenQty)}</b> total qty
+              </span>
+            )}
+          </div>
           <Btn
             className="tape"
             icon="check"
@@ -284,7 +589,7 @@ function SourcePicker({ doc, src, isOutward = false, partyId, partyLabel, exclud
                 );
                 return;
               }
-              onPick(chosen.filter((c) => c.take > 0));
+              onPick(chosen.filter((c) => Number(c.take) > 0));
             }}
           >
             Add {chosen.length || ""} line{chosen.length === 1 ? "" : "s"}
@@ -322,9 +627,35 @@ export default function VoucherForm() {
   const [picked, setPicked] = useState<any[]>([]);
   const [flash, setFlash] = useState(-1);
   const [err, setErr] = useState<Record<string, string>>({});
+  const [scanStatus, setScanStatus] = useState<{
+    type: "idle" | "success" | "err" | "warn";
+    message: string;
+    details?: string;
+  }>({ type: "idle", message: "" });
 
   const pool = useRef<any[] | null>(null);
   const scanRef = useRef<HTMLInputElement | null>(null);
+
+  // Barcode Popup Modal State
+  const [barcodeModalOpen, setBarcodeModalOpen] = useState(false);
+  const [scannedList, setScannedList] = useState<
+    Array<{ id: string; barcode: string; item_name: string; product_id: number; lot?: any }>
+  >([]);
+  const [modalScanStatus, setModalScanStatus] = useState<{
+    type: "idle" | "success" | "err" | "warn";
+    message: string;
+    details?: string;
+  }>({ type: "idle", message: "" });
+  const modalScanRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (barcodeModalOpen) {
+      const timer = setTimeout(() => {
+        if (modalScanRef.current) modalScanRef.current.focus();
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [barcodeModalOpen]);
 
   const locked = !!rec?.locked;
   const isNew = !id;
@@ -341,6 +672,7 @@ export default function VoucherForm() {
     setPays([]);
     setRec(null);
     setPicked([]);
+    setScannedList([]);
   }, [doc, cfg]); // eslint-disable-line
 
   const hydrate = (v: any) => {
@@ -351,6 +683,7 @@ export default function VoucherForm() {
     setTerms(v.terms);
     setPays(v.payments);
     setPicked([...new Set(v.items.map((i: any) => i.src_header_id).filter(Boolean))]);
+    setScannedList([]);
     if (v.items) {
       v.items.forEach((it: any, idx: number) => {
         if (it.product_id) {
@@ -399,6 +732,19 @@ export default function VoucherForm() {
         });
     else base();
   }, [doc, id]); // eslint-disable-line
+
+  useEffect(() => {
+    if (items.length === 0 && scannedList.length > 0) {
+      setScannedList([]);
+      setModalScanStatus({ type: "idle", message: "" });
+    }
+  }, [items.length]);
+
+  useEffect(() => {
+    if (scannedList.length === 0 && modalScanStatus.type === "success") {
+      setModalScanStatus({ type: "idle", message: "" });
+    }
+  }, [scannedList.length, modalScanStatus.type]);
 
   useEffect(() => {
     if (!cfg?.return_of || !h?.party_id || !doc) {
@@ -491,6 +837,7 @@ export default function VoucherForm() {
     if (src && pid !== h.party_id) {
       setItems([]);
       setPicked([]);
+      setScannedList([]);
     }
     setHead(patch);
     pool.current = null;
@@ -529,15 +876,20 @@ export default function VoucherForm() {
           const n = { ...r };
           n.has_pricelist = !!p.has_pricelist;
           n.available_pricelists = p.available_pricelists || [];
-          if (p.pricelist_id) {
+          if (doc !== "sales_order" && p.pricelist_id) {
             n.pricelist_id = p.pricelist_id;
             n.pricelist_id__label = p.pricelist_label;
             n.rate = p.rate !== undefined ? p.rate : "";
             n.disc_pct = p.disc_pct !== undefined ? p.disc_pct : "";
             n.disc_amt = p.disc_amt !== undefined ? p.disc_amt : "";
-          } else if (!p.has_pricelist) {
+          } else if (doc === "sales_order" || !p.has_pricelist) {
             n.pricelist_id = null;
             n.pricelist_id__label = "";
+            if (doc === "sales_order") {
+              n.rate = "";
+              n.disc_pct = "";
+              n.disc_amt = "";
+            }
           }
           if (!n.customer_item_name && p.customer_item_name) n.customer_item_name = p.customer_item_name;
           return { ...n, ...calcItem(n) };
@@ -586,6 +938,8 @@ export default function VoucherForm() {
   };
 
   const fromLine = (l: any) => {
+    const isChallan = doc === "challan";
+    const ordQty = Number(l.take || l.pending_qty || 0);
     const n: any = {
       product_id: l.product_id,
       product_id__label: l.item_name,
@@ -593,7 +947,10 @@ export default function VoucherForm() {
       uom: l.uom,
       description: l.description,
       customer_item_name: l.customer_item_name,
-      qty: l.take,
+      qty: isChallan ? 0 : l.take,
+      order_qty: ordQty,
+      pending_qty: Number(l.pending_qty || ordQty),
+      scanned_count: 0,
       pricelist_id: l.pricelist_id,
       pricelist_id__label: l.pricelist_label,
       rate: l.rate ?? "",
@@ -630,7 +987,18 @@ export default function VoucherForm() {
     if (src.link) {
       setItems(mapped);
       setHead({ [src.link]: lines[0].src_header_id, [src.link + "__label"]: lines[0].src_no });
-    } else setItems((cur) => [...cur.filter((r) => r.product_id), ...mapped]);
+    } else {
+      setItems((cur) => {
+        const existing = new Set(
+          cur.map((i) => String(i.src_item_id || i.req_item_id || "")).filter(Boolean)
+        );
+        const deduplicated = mapped.filter((m) => {
+          const k = String(m.src_item_id || m.req_item_id || "");
+          return !k || !existing.has(k);
+        });
+        return [...cur.filter((r) => r.product_id), ...deduplicated];
+      });
+    }
 
     setPicked((p) => [...new Set([...p, ...lines.map((l) => l.src_header_id).filter(Boolean)])]);
     pool.current = null;
@@ -654,11 +1022,335 @@ export default function VoucherForm() {
   const bad = (m: string) => {
     beep(false);
     toast(m, "err");
+    if (scanRef.current) {
+      scanRef.current.value = "";
+      scanRef.current.focus();
+    }
+  };
+
+
+  const resetScansToZero = () => {
+    setItems((rows) =>
+      rows.map((r) => {
+        if (!r.product_id) return r;
+        const n = { ...r, qty: 0, scanned_count: 0 };
+        return { ...n, ...calcItem(n) };
+      })
+    );
+    toast("Scanned counts reset to 0. Ready to scan.");
+    setScanStatus({ type: "idle", message: "Counts reset to 0. Ready for continuous scanning." });
+    if (scanRef.current) scanRef.current.focus();
+  };
+
+  const openBarcodeModal = () => {
+    getAudioContext();
+    if (!h.party_id) {
+      toast("Please select customer (party) first.", "warn");
+      return;
+    }
+    const hasPickedLines = items.some((it) => it.product_id);
+    if (!hasPickedLines) {
+      toast("Please pick Sales Orders first before scanning barcodes.", "warn");
+      return;
+    }
+    setModalScanStatus({ type: "idle", message: "" });
+    setBarcodeModalOpen(true);
+  };
+
+  const handleModalScanKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    getAudioContext();
+    const target = e.currentTarget;
+    const code = target.value.trim();
+    if (!code) return;
+    target.value = "";
+
+    try {
+      const r: any = await api(`/stock/scan/${encodeURIComponent(code)}`, { quiet: true });
+      const pr = r?.product;
+      const lots = r?.lots || [];
+
+      if (!pr) {
+        const msg = `Scanned barcode "${code}" does not match any recognized item.`;
+        beep(false);
+        setModalScanStatus({ type: "err", message: msg });
+        return;
+      }
+
+      // Check against picked Sales Orders
+      const matchingItems = items.filter(
+        (it) =>
+          it.product_id === pr.product_id ||
+          (it.barcode && (it.barcode === code || lots.some((l: any) => l.barcode === it.barcode)))
+      );
+
+      if (!matchingItems.length) {
+        const msg = "Scanned item does not exist in the picked Sales Orders. Please check.";
+        beep(false);
+        setModalScanStatus({
+          type: "err",
+          message: msg,
+          details: `Item "${pr.item_name}" (Barcode: ${code}) is not part of this voucher's selected Sales Orders.`,
+        });
+        return;
+      }
+
+      // Over-scan validation against pending sales order quantity
+      const totalOrderQty = matchingItems.reduce(
+        (sum, it) => sum + (Number(it.order_qty || it.pending_qty) || 0),
+        0
+      );
+      const alreadyScannedCount = scannedList.filter((s) => s.product_id === pr.product_id).length;
+
+      if (totalOrderQty > 0 && alreadyScannedCount >= totalOrderQty) {
+        const msg = `Order quantity (${totalOrderQty}) for "${pr.item_name}" reached. Over-scanning is not allowed.`;
+        beep(false);
+        setModalScanStatus({
+          type: "warn",
+          message: msg,
+          details: `Already scanned: ${alreadyScannedCount} / ${totalOrderQty}`,
+        });
+        return;
+      }
+
+      const lot = lots[0] || null;
+      const newEntry = {
+        id: Math.random().toString(36).substring(2, 9),
+        barcode: lot ? lot.barcode : code,
+        item_name: pr.item_name,
+        product_id: pr.product_id,
+        lot,
+      };
+
+      setScannedList((prev) => [...prev, newEntry]);
+      beep(true);
+      setModalScanStatus({
+        type: "success",
+        message: `✓ Scanned: ${pr.item_name} (Barcode: ${newEntry.barcode})`,
+        details: totalOrderQty > 0 ? `Verified: ${alreadyScannedCount + 1} of ${totalOrderQty}` : "Item verified",
+      });
+    } catch {
+      const msg = `Scanned barcode "${code}" was not found in the system. Please check.`;
+      beep(false);
+      setModalScanStatus({ type: "err", message: msg });
+    } finally {
+      if (modalScanRef.current) {
+        modalScanRef.current.value = "";
+        modalScanRef.current.focus();
+      }
+    }
+  };
+
+  const removeScan = (id: string) => {
+    setScannedList((prev) => {
+      const remaining = prev.filter((s) => s.id !== id);
+      if (remaining.length === 0) {
+        setModalScanStatus({ type: "idle", message: "" });
+      }
+      return remaining;
+    });
+  };
+
+  const acceptScannedBarcodes = () => {
+    if (!scannedList.length) {
+      toast("No barcodes scanned yet. Please scan barcodes before accepting.", "warn");
+      return;
+    }
+
+    // Count scans by product_id
+    const countByProduct = new Map<number, { count: number; lot?: any; barcode?: string }>();
+    for (const entry of scannedList) {
+      const cur = countByProduct.get(entry.product_id) || { count: 0, lot: entry.lot, barcode: entry.barcode };
+      cur.count += 1;
+      if (entry.lot && !cur.lot) cur.lot = entry.lot;
+      if (entry.barcode && !cur.barcode) cur.barcode = entry.barcode;
+      countByProduct.set(entry.product_id, cur);
+    }
+
+    setItems((rows) => {
+      const remainingMap = new Map<number, number>();
+      for (const [pid, data] of countByProduct.entries()) {
+        remainingMap.set(pid, data.count);
+      }
+
+      return rows.map((r) => {
+        if (!r.product_id || !countByProduct.has(r.product_id)) return r;
+        const data = countByProduct.get(r.product_id)!;
+        const rem = remainingMap.get(r.product_id) || 0;
+        const ord = Number(r.order_qty || r.pending_qty || 0);
+
+        let takeForThisRow = rem;
+        if (ord > 0 && rem > ord) {
+          takeForThisRow = ord;
+          remainingMap.set(r.product_id, rem - ord);
+        } else {
+          remainingMap.set(r.product_id, 0);
+        }
+
+        const updated = {
+          ...r,
+          qty: takeForThisRow,
+          scanned_count: takeForThisRow,
+          barcode: data.barcode || r.barcode,
+          godown_id: data.lot ? data.lot.godown_id : r.godown_id,
+          godown_id__label: data.lot ? data.lot.godown_label : r.godown_id__label,
+          bin_no: data.lot ? (data.lot.bin_no || "") : r.bin_no,
+          stock_qty: data.lot ? Number(data.lot.balance) : r.stock_qty,
+        };
+        return { ...updated, ...calcItem(updated) };
+      });
+    });
+
+    toast(`Accepted ${scannedList.length} scans. Item quantities updated!`, "ok");
+    setBarcodeModalOpen(false);
   };
 
   const scan = async (code: string) => {
-    if (!h.party_id) return bad("Choose the party before scanning.");
-    if (cfg.return_of && !h.ref_voucher_id) return bad("Choose the invoice being returned first.");
+    if (!h.party_id) {
+      const msg = "Choose the customer (party) before scanning.";
+      bad(msg);
+      setScanStatus({ type: "err", message: msg });
+      return;
+    }
+
+    if (cfg.return_of && !h.ref_voucher_id) {
+      const msg = "Choose the invoice being returned first.";
+      bad(msg);
+      setScanStatus({ type: "err", message: msg });
+      return;
+    }
+
+    // CONTINUOUS SCANNING & CROSS-CHECKING LOGIC FOR PACKING LIST (doc === "challan")
+    if (doc === "challan") {
+      const activeItems = items.filter((i) => i.product_id);
+      if (!activeItems.length) {
+        const msg = "Please pick Sales Orders first before scanning items.";
+        bad(msg);
+        setScanStatus({ type: "err", message: msg });
+        return;
+      }
+
+      let r: any;
+      try {
+        r = await api(`/stock/scan/${encodeURIComponent(code)}`, { quiet: true });
+      } catch {
+        const msg = `Scanned barcode "${code}" was not found in the system. Please check.`;
+        bad(msg);
+        setScanStatus({ type: "err", message: msg });
+        return;
+      }
+
+      const pr = r.product;
+      const lots = r.lots || [];
+      if (!pr) {
+        const msg = `Scanned barcode "${code}" does not match any recognized item.`;
+        bad(msg);
+        setScanStatus({ type: "err", message: msg });
+        return;
+      }
+
+      // Requirement 3: Cross-check against items selected via "Pick Sales Orders"
+      const matchingIndices = items
+        .map((it, idx) => ({ it, idx }))
+        .filter(
+          ({ it }) =>
+            it.product_id === pr.product_id ||
+            (it.barcode && (it.barcode === code || lots.some((l: any) => l.barcode === it.barcode)))
+        );
+
+      if (!matchingIndices.length) {
+        const msg = "Scanned item does not exist in the picked Sales Orders. Please check.";
+        bad(msg);
+        setScanStatus({
+          type: "err",
+          message: msg,
+          details: `Item "${pr.item_name}" (Barcode: ${code}) is not part of this voucher's selected Sales Orders.`,
+        });
+        return;
+      }
+
+      // Requirement 3: Over-scan validation
+      const totalOrder = matchingIndices.reduce(
+        (sum, { it }) => sum + (Number(it.order_qty || it.pending_qty) || 0),
+        0
+      );
+      const totalScanned = matchingIndices.reduce((sum, { it }) => sum + (Number(it.qty) || 0), 0);
+
+      // Find first line that still has pending scans to fulfill
+      const target = matchingIndices.find(
+        ({ it }) => (Number(it.qty) || 0) < Number(it.order_qty || it.pending_qty || Infinity)
+      );
+
+      if (!target || totalScanned >= totalOrder) {
+        const msg = `Cannot scan more! Order quantity (${totalOrder}) for "${pr.item_name}" is already fulfilled. Over-scanning is not permitted.`;
+        bad(msg);
+        setScanStatus({
+          type: "warn",
+          message: msg,
+          details: `Order Quantity: ${totalOrder} · Total Scanned: ${totalScanned}`,
+        });
+        return;
+      }
+
+      const targetIdx = target.idx;
+      const targetItem = target.it;
+      const lot = lots[0];
+      const balance = lot ? Number(lot.balance) : 0;
+
+      if (lot && balance <= 0) {
+        const msg = `No stock available in godown for "${pr.item_name}" (Barcode ${lot.barcode}). Available: 0.`;
+        bad(msg);
+        setScanStatus({ type: "err", message: msg });
+        return;
+      }
+
+      if (lot && (Number(targetItem.qty) || 0) + 1 > balance) {
+        const msg = `Insufficient godown stock for "${pr.item_name}"! Available in stock: ${balance}.`;
+        bad(msg);
+        setScanStatus({ type: "err", message: msg });
+        return;
+      }
+
+      // Requirement 2 & 4: Real-time Auto Quantity Count & Auto-fill
+      const newQty = (Number(targetItem.qty) || 0) + 1;
+      const orderQty = Number(targetItem.order_qty || targetItem.pending_qty || newQty);
+
+      setItems((curRows) =>
+        curRows.map((row, j) => {
+          if (j !== targetIdx) return row;
+          const updated = {
+            ...row,
+            qty: newQty,
+            scanned_count: newQty,
+            barcode: lot ? lot.barcode : row.barcode || code,
+            godown_id: lot ? lot.godown_id : row.godown_id,
+            godown_id__label: lot ? lot.godown_label : row.godown_id__label,
+            bin_no: lot ? (lot.bin_no || "") : row.bin_no,
+            stock_qty: lot ? balance : row.stock_qty,
+          };
+          return { ...updated, ...calcItem(updated) };
+        })
+      );
+
+      beep(true);
+      setFlash(targetIdx);
+      setTimeout(() => setFlash(-1), 1200);
+
+      const succMsg = `✓ Scanned: ${pr.item_name} (Barcode: ${lot?.barcode || code}) — Qty: ${newQty} of ${orderQty} verified`;
+      setScanStatus({
+        type: "success",
+        message: succMsg,
+        details: newQty >= orderQty ? "Order item complete!" : `${orderQty - newQty} items remaining to scan`,
+      });
+
+      if (scanRef.current) {
+        scanRef.current.value = "";
+        scanRef.current.focus();
+      }
+      return;
+    }
+
+    // Default scanning logic for other vouchers (e.g. returns)
     let r: any;
     try {
       r = await api(`/stock/scan/${encodeURIComponent(code)}${qs({ ref_voucher_id: cfg.return_of ? h.ref_voucher_id : "" })}`, {
@@ -734,6 +1426,11 @@ export default function VoucherForm() {
     beep(true);
     setFlash(idx);
     setTimeout(() => setFlash(-1), 1200);
+
+    if (scanRef.current) {
+      scanRef.current.value = "";
+      scanRef.current.focus();
+    }
   };
 
   /* ---- save / actions ---- */
@@ -762,12 +1459,26 @@ export default function VoucherForm() {
   });
 
   const save = async () => {
-    if (doc === "sales_order" || doc === "purchase_order") {
+    if (doc === "purchase_order") {
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         if (it.product_id && it.has_pricelist && !it.pricelist_id) {
           toast(
             `Line ${i + 1}: Price list is mandatory for "${it.product_id__label || "selected item"}" as a price list is configured for it.`,
+            "err"
+          );
+          return;
+        }
+      }
+    }
+    if (doc === "challan") {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (!it.product_id) continue;
+        const q = Number(it.qty) || 0;
+        if (q <= 0) {
+          toast(
+            `Line ${i + 1} ("${it.product_id__label || "item"}"): Quantity must be greater than 0. Please scan or enter verified quantity before saving.`,
             "err"
           );
           return;
@@ -902,7 +1613,7 @@ export default function VoucherForm() {
         />
       );
     if (c === "pricelist_id") {
-      const isMandatory = (doc === "sales_order" || doc === "purchase_order") && !!row.has_pricelist;
+      const isMandatory = doc === "purchase_order" && !!row.has_pricelist;
       return (
         <Lookup
           master="pricelist"
@@ -948,18 +1659,24 @@ export default function VoucherForm() {
     if (c === "qty") {
       const isOutward = (cfg?.stock || 0) < 0;
       const isOver = isOutward && row.stock_qty !== undefined && Number(row.qty) > Number(row.stock_qty);
+      const isChallan = doc === "challan";
+      const ordQty = Number(row.order_qty || row.pending_qty || 0);
+      const isExceeded = isChallan && ordQty > 0 && Number(row.qty) > ordQty;
+      const isFullyVerified = isChallan && ordQty > 0 && Number(row.qty) === ordQty;
+      const hasError = isOver || isExceeded;
+
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <input
-            className={`n ${isOver ? "err" : ""}`}
+            className={`n ${hasError ? "err" : ""}`}
             inputMode="decimal"
             style={{
-              borderColor: isOver ? "var(--red, #dc2626)" : undefined,
-              backgroundColor: isOver ? "rgba(239, 68, 68, 0.08)" : undefined,
-              color: isOver ? "var(--red, #dc2626)" : undefined,
-              fontWeight: isOver ? 700 : undefined,
+              borderColor: hasError ? "var(--red, #dc2626)" : isFullyVerified ? "var(--moss, #16a34a)" : undefined,
+              backgroundColor: hasError ? "rgba(239, 68, 68, 0.08)" : isFullyVerified ? "rgba(22, 163, 74, 0.06)" : undefined,
+              color: hasError ? "var(--red, #dc2626)" : isFullyVerified ? "var(--moss, #16a34a)" : undefined,
+              fontWeight: hasError || isFullyVerified ? 700 : undefined,
             }}
-            value={row[c] === 0 ? "" : (row[c] ?? "")}
+            value={row[c] === 0 ? "0" : (row[c] ?? "")}
             placeholder="0"
             disabled={off}
             onChange={(e) => {
@@ -969,22 +1686,44 @@ export default function VoucherForm() {
               if (isOutward && row.stock_qty !== undefined && numVal > Number(row.stock_qty)) {
                 toast(`Insufficient stock! Available in stock: ${row.stock_qty}. Stock cannot be negative.`, "err");
               }
-              setItem(i, { [c]: val });
+              if (ordQty > 0 && numVal > ordQty) {
+                toast(`Quantity (${numVal}) exceeds sales order quantity (${ordQty})!`, "warn");
+              }
+              setItem(i, { [c]: val, scanned_count: numVal });
             }}
           />
-          {isOutward && row.stock_qty !== undefined && (
-            <span
-              style={{
-                fontSize: 11,
-                lineHeight: 1.1,
-                fontWeight: 600,
-                color: isOver ? "var(--red, #dc2626)" : "var(--moss, #16a34a)",
-                textAlign: "right",
-              }}
-            >
-              {isOver ? `⚠️ Max ${row.stock_qty}` : `Stock: ${row.stock_qty}`}
-            </span>
-          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, lineHeight: 1.1 }}>
+            {isChallan && ordQty > 0 ? (
+              <span
+                style={{
+                  fontWeight: 600,
+                  color: isExceeded
+                    ? "var(--red, #dc2626)"
+                    : isFullyVerified
+                    ? "var(--moss, #16a34a)"
+                    : "var(--denim-600, #4f46e5)",
+                }}
+              >
+                {isExceeded
+                  ? `⚠️ Exceeded: ${row.qty}/${ordQty}`
+                  : isFullyVerified
+                  ? `✓ Verified: ${row.qty}/${ordQty}`
+                  : `Order: ${ordQty} (Scan: ${row.qty || 0})`}
+              </span>
+            ) : null}
+            {isOutward && row.stock_qty !== undefined && (
+              <span
+                style={{
+                  fontWeight: 600,
+                  color: isOver ? "var(--red, #dc2626)" : "var(--moss, #16a34a)",
+                  textAlign: "right",
+                  marginLeft: "auto",
+                }}
+              >
+                {isOver ? `⚠️ Max ${row.stock_qty}` : `Stock: ${row.stock_qty}`}
+              </span>
+            )}
+          </div>
         </div>
       );
     }
@@ -1003,6 +1742,34 @@ export default function VoucherForm() {
           style={isRateLocked ? { backgroundColor: "var(--denim-100, #e1e7f5)", cursor: "not-allowed", opacity: 0.9 } : undefined}
           onChange={(e) => /^\d*\.?\d*$/.test(e.target.value) && setItem(i, { [c]: e.target.value })}
         />
+      );
+    }
+    if (c === "barcode" && doc === "challan") {
+      return (
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}
+          onClick={openBarcodeModal}
+          title="Click to open Barcode Verification Popup"
+        >
+          <input
+            value={row[c] ?? ""}
+            readOnly
+            placeholder="Click to scan"
+            style={{ cursor: "pointer", background: "var(--paper)", width: "100%" }}
+          />
+          <button
+            type="button"
+            className="icon-btn"
+            title="Open Barcode Scan Modal"
+            style={{ padding: 4, color: "var(--tape)" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              openBarcodeModal();
+            }}
+          >
+            <Icon name="scan" size={16} />
+          </button>
+        </div>
       );
     }
     return <input value={row[c] ?? ""} disabled={off} onChange={(e) => setItem(i, { [c]: e.target.value })} />;
@@ -1192,23 +1959,106 @@ export default function VoucherForm() {
 
       {cfg.scan && editable && (
         <div className="section no-print">
-          <div className="scanbar">
-            <Icon name="scan" size={26} style={{ color: "var(--tape)" }} />
-            <input
-              ref={scanRef}
-              autoFocus
-              placeholder="Scan or type a barcode, then press Enter"
-              onKeyDown={(e: any) => {
-                if (e.key === "Enter" && e.target.value.trim()) {
-                  scan(e.target.value.trim());
-                  e.target.value = "";
-                }
+          {doc === "challan" ? (
+            <div
+              className="scan-box-wrapper"
+              style={{
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 20px",
+                flexWrap: "wrap",
+                gap: 12,
               }}
-            />
-            <span style={{ color: "var(--denim-300)", fontSize: 13 }}>
-              {cfg.return_of ? "Barcodes must be on the chosen invoice" : "Fills godown, bin and order details"}
-            </span>
-          </div>
+              onClick={openBarcodeModal}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <Icon name="scan" size={32} style={{ color: "var(--tape)" }} />
+                <div>
+                  <h4
+                    style={{
+                      margin: 0,
+                      fontSize: 16,
+                      color: "var(--denim-950)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    Barcode Verification Scanner
+                    <span
+                      style={{
+                        background: "var(--denim-100)",
+                        color: "var(--denim-700)",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: "2px 8px",
+                        borderRadius: 4,
+                      }}
+                    >
+                      Popup Verification
+                    </span>
+                  </h4>
+                  <span style={{ fontSize: 13, color: "var(--muted)", marginTop: 2, display: "block" }}>
+                    Click here or on any item's Barcode field to open continuous scanning popup and count quantities.
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {scannedList.length > 0 && items.length > 0 && (
+                  <span
+                    style={{
+                      background: "rgba(22, 163, 74, 0.15)",
+                      color: "#16a34a",
+                      border: "1px solid #16a34a",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      padding: "4px 10px",
+                      borderRadius: 4,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    ✓ {scannedList.length} barcode(s) scanned
+                  </span>
+                )}
+                <Btn
+                  className="tape"
+                  icon="scan"
+                  style={{ padding: "8px 18px", fontSize: 13, fontWeight: 700 }}
+                  onClick={(e: any) => {
+                    e.stopPropagation();
+                    openBarcodeModal();
+                  }}
+                >
+                  Scan Barcodes
+                </Btn>
+              </div>
+            </div>
+          ) : (
+            <div className="scanbar">
+              <Icon name="scan" size={26} style={{ color: "var(--tape)" }} />
+              <input
+                ref={scanRef}
+                autoFocus
+                placeholder="Scan or type a barcode, then press Enter"
+                onKeyDown={(e: any) => {
+                  if (e.key === "Enter" && e.target.value.trim()) {
+                    getAudioContext();
+                    const val = e.target.value.trim();
+                    e.target.value = "";
+                    scan(val);
+                  }
+                }}
+              />
+              <span style={{ color: "var(--denim-300)", fontSize: 13 }}>
+                {cfg.return_of ? "Barcodes must be on the chosen invoice" : "Fills godown, bin and order details"}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -1253,7 +2103,19 @@ export default function VoucherForm() {
                         type="button"
                         className="icon-btn del"
                         title="Remove line"
-                        onClick={() => setItems(items.filter((_, j) => j !== i))}
+                        onClick={() => {
+                          const deletedItem = items[i];
+                          const remaining = items.filter((_, j) => j !== i);
+                          setItems(remaining);
+                          if (!remaining.length) {
+                            setScannedList([]);
+                          } else if (deletedItem?.product_id) {
+                            const stillExists = remaining.some((it) => it.product_id === deletedItem.product_id);
+                            if (!stillExists) {
+                              setScannedList((prev) => prev.filter((s) => s.product_id !== deletedItem.product_id));
+                            }
+                          }
+                        }}
                       >
                         <Icon name="trash" size={18} />
                       </button>
@@ -1512,9 +2374,345 @@ export default function VoucherForm() {
           partyId={h?.party_id}
           partyLabel={h?.party_id__label}
           excludeId={id}
+          existingKeys={
+            new Set(
+              items
+                .map((it) => String(it.src_item_id || it.req_item_id || ""))
+                .filter(Boolean)
+            )
+          }
           onClose={() => setPicker(false)}
           onPick={onPick}
         />
+      )}
+
+      {barcodeModalOpen && (
+        <div className="veil center" style={{ zIndex: 1000 }}>
+          <div
+            className="modal"
+            style={{
+              width: "min(720px, 95vw)",
+              maxHeight: "88vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div className="modal-head" style={{ borderBottom: "2px solid var(--tape)" }}>
+              <Icon name="scan" size={24} style={{ color: "var(--tape)" }} />
+              <div style={{ flex: 1 }}>
+                <h2 style={{ fontSize: 18, margin: 0 }}>Barcode Scanning Verification</h2>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                  Scan product barcodes. Scanned counts will be mapped to the items list on clicking ACCEPT.
+                </div>
+              </div>
+              <button
+                className="icon-btn"
+                onClick={() => setBarcodeModalOpen(false)}
+                title="Close"
+              >
+                <Icon name="x" />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+              {/* Continuous Scanner Input Field */}
+              <div className="scanbar" style={{ margin: "0 0 12px 0", border: "2px solid var(--tape)" }}>
+                <Icon name="scan" size={26} style={{ color: "var(--tape)" }} />
+                <input
+                  ref={modalScanRef}
+                  autoFocus
+                  placeholder="Scan or type a barcode, then press Enter"
+                  onKeyDown={handleModalScanKeyDown}
+                />
+              </div>
+
+              {/* Status Banner */}
+              {modalScanStatus.message && (
+                <div
+                  className={`scan-status-pill scan-status-${modalScanStatus.type || "idle"}`}
+                  style={{ marginBottom: 12 }}
+                >
+                  <Icon
+                    name={
+                      modalScanStatus.type === "success"
+                        ? "check"
+                        : modalScanStatus.type === "err"
+                        ? "alert"
+                        : "info"
+                    }
+                    size={16}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{modalScanStatus.message}</div>
+                    {modalScanStatus.details && (
+                      <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>
+                        {modalScanStatus.details}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "inherit",
+                      padding: 2,
+                      fontWeight: "bold",
+                    }}
+                    onClick={() => setModalScanStatus({ type: "idle", message: "" })}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Table matching user's Excel-like screenshot */}
+              <div
+                style={{
+                  border: "2px solid #eab308",
+                  borderRadius: 6,
+                  overflow: "hidden",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                }}
+              >
+                <table className="tbl" style={{ width: "100%", margin: 0, borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#ffff00", color: "#000", fontWeight: 700 }}>
+                      <th
+                        style={{
+                          width: 50,
+                          padding: "10px 12px",
+                          background: "#ffff00",
+                          color: "#000",
+                          borderRight: "1px solid #d4d4d8",
+                          borderBottom: "2px solid #ca8a04",
+                        }}
+                      >
+                        Sl
+                      </th>
+                      <th
+                        style={{
+                          width: 180,
+                          padding: "10px 14px",
+                          background: "#ffff00",
+                          color: "#000",
+                          borderRight: "1px solid #d4d4d8",
+                          borderBottom: "2px solid #ca8a04",
+                          fontFamily: "monospace",
+                          fontSize: 14,
+                        }}
+                      >
+                        Barcode
+                      </th>
+                      <th
+                        style={{
+                          padding: "10px 14px",
+                          background: "#ffff00",
+                          color: "#000",
+                          borderBottom: "2px solid #ca8a04",
+                        }}
+                      >
+                        Item Name
+                      </th>
+                      <th
+                        style={{
+                          width: 60,
+                          textAlign: "center",
+                          padding: "10px 12px",
+                          background: "#ffff00",
+                          color: "#000",
+                          borderBottom: "2px solid #ca8a04",
+                        }}
+                      >
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scannedList.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          style={{
+                            textAlign: "center",
+                            padding: "32px 16px",
+                            color: "var(--muted)",
+                            background: "#fffbeb",
+                          }}
+                        >
+                          <Icon
+                            name="scan"
+                            size={34}
+                            style={{ opacity: 0.35, display: "block", margin: "0 auto 8px" }}
+                          />
+                          No barcodes scanned yet. Scan or type a barcode above and press Enter.
+                        </td>
+                      </tr>
+                    ) : (
+                      scannedList.map((s, idx) => (
+                        <tr
+                          key={s.id}
+                          style={{
+                            borderBottom: "1px solid #e4e4e7",
+                            background: idx % 2 === 0 ? "#ffffff" : "#fefce8",
+                          }}
+                        >
+                          <td
+                            style={{
+                              padding: "8px 12px",
+                              color: "var(--muted)",
+                              borderRight: "1px solid #e4e4e7",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {idx + 1}
+                          </td>
+                          <td
+                            style={{
+                              padding: "8px 14px",
+                              fontFamily: "monospace",
+                              fontWeight: 700,
+                              fontSize: 14,
+                              color: "var(--denim-950)",
+                              borderRight: "1px solid #e4e4e7",
+                            }}
+                          >
+                            {s.barcode}
+                          </td>
+                          <td style={{ padding: "8px 14px", fontWeight: 600, color: "var(--denim-900)" }}>
+                            {s.item_name}
+                          </td>
+                          <td style={{ padding: "8px 12px", textAlign: "center" }}>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              style={{ color: "var(--red, #dc2626)", padding: "2px 6px" }}
+                              title="Remove scan"
+                              onClick={() => removeScan(s.id)}
+                            >
+                              <Icon name="trash" size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Real-time Summary & Counter */}
+              {scannedList.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 14,
+                    padding: "10px 14px",
+                    background: "var(--denim-100, #f1f5f9)",
+                    borderRadius: 6,
+                    fontSize: 13,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontWeight: 600,
+                      color: "var(--denim-950)",
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span>Total Scanned: {scannedList.length} item(s)</span>
+                    <button
+                      type="button"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--red, #dc2626)",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                      onClick={() => {
+                        setScannedList([]);
+                        setModalScanStatus({ type: "idle", message: "" });
+                      }}
+                    >
+                      Clear all scans
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "6px 12px",
+                      fontSize: 12,
+                      color: "var(--denim-800)",
+                    }}
+                  >
+                    {Array.from(
+                      scannedList
+                        .reduce((m, item) => {
+                          m.set(item.item_name, (m.get(item.item_name) || 0) + 1);
+                          return m;
+                        }, new Map<string, number>())
+                        .entries()
+                    ).map(([name, count]) => (
+                      <span
+                        key={name}
+                        style={{
+                          background: "var(--paper)",
+                          padding: "3px 8px",
+                          borderRadius: 4,
+                          border: "1px solid var(--line)",
+                        }}
+                      >
+                        <b>{name}</b>: {count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer with ACCEPT Button matching image */}
+            <div
+              className="modal-foot"
+              style={{
+                padding: "14px 20px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "var(--paper)",
+              }}
+            >
+              <Btn className="ghost" onClick={() => setBarcodeModalOpen(false)}>
+                Cancel
+              </Btn>
+              <button
+                type="button"
+                style={{
+                  background: "#ea580c",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "10px 32px",
+                  fontSize: "15px",
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 10px rgba(234, 88, 12, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+                onClick={acceptScannedBarcodes}
+              >
+                <Icon name="check" size={18} />
+                ACCEPT
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

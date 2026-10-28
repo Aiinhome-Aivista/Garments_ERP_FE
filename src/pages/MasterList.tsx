@@ -263,7 +263,6 @@ export default function MasterList() {
 
   const remove = async (e: React.MouseEvent, rId: number) => {
     e.stopPropagation();
-    if (!confirm("Delete this record? This can't be undone.")) return;
     try {
       await api(`/masters/${key}/${rId}`, { method: "DELETE" });
       toast("Deleted");

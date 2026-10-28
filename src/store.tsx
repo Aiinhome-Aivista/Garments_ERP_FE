@@ -18,7 +18,7 @@ export interface AppContextType {
   register: (u: string, e: string, f: string, p: string, r: string) => Promise<void>;
   logout: () => void;
   can: (res: string, act?: string) => boolean;
-  toast: (msg: string, kind?: "ok" | "err") => void;
+  toast: (msg: string, kind?: "ok" | "err" | "warn") => void;
   theme: string;
   setTheme: () => void;
 }
@@ -26,7 +26,7 @@ export interface AppContextType {
 interface ToastItem {
   id: number;
   msg: string;
-  kind: "ok" | "err";
+  kind: "ok" | "err" | "warn";
 }
 
 const Ctx = createContext<AppContextType | null>(null);
@@ -51,10 +51,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("loomline.theme", theme);
   }, [theme]);
 
-  const toast = useCallback((msg: string, kind: "ok" | "err" = "ok") => {
+  const toast = useCallback((msg: string, kind: "ok" | "err" | "warn" = "ok") => {
     const id = Math.random();
     setToasts((t) => [...t, { id, msg, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "err" ? 6000 : 3200);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "err" || kind === "warn" ? 5000 : 3200);
   }, []);
 
   const logout = useCallback(() => {
@@ -148,8 +148,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className={"toast " + (t.kind === "err" ? "err" : "")}>
-            <Icon name={t.kind === "err" ? "alert" : "check"} size={18} />
+          <div key={t.id} className={"toast " + (t.kind === "err" ? "err" : t.kind === "warn" ? "warn" : "")}>
+            <Icon name={t.kind === "err" || t.kind === "warn" ? "alert" : "check"} size={18} />
             {t.msg}
           </div>
         ))}
