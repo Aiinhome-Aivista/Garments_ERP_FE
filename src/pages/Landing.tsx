@@ -138,7 +138,7 @@ export default function Landing() {
         <div className="workflow-container">
           <div className="workflow-text">
             <h2 style={{ fontSize: "2.5rem", marginBottom: "20px", fontFamily: "var(--f-head)" }}>How It Works</h2>
-            <p style={{ color: "var(--denim-600)", fontSize: "1.1rem", lineHeight: "1.6", marginBottom: "30px" }}>
+            <p style={{ color: "var(--muted)", fontSize: "1.1rem", lineHeight: "1.6", marginBottom: "30px" }}>
               Our platform bridges the gap between the factory floor and the administrative office. We eliminate paper trails by digitizing the complete lifecycle of a garment order.
             </p>
             <ul className="workflow-list">
@@ -179,7 +179,7 @@ export default function Landing() {
         <div style={{ textAlign: "center", marginBottom: 60 }}>
           <div className="section-badge">Real-World Apparel Operations</div>
           <h2 className="section-title" style={{ marginBottom: 20 }}>Inside Modern Garment Manufacturing</h2>
-          <p style={{ color: "var(--denim-600)", fontSize: "1.1rem", maxWidth: 700, margin: "0 auto" }}>
+          <p style={{ color: "var(--muted)", fontSize: "1.1rem", maxWidth: 700, margin: "0 auto" }}>
             See how Loomline powers production planning, automated cutting lines, and warehouse management.
           </p>
         </div>
@@ -212,7 +212,7 @@ export default function Landing() {
         <h2 className="section-title">ROI Calculator</h2>
         <div className="roi-container">
           <div className="roi-panel">
-            <h3 style={{ marginBottom: 24, fontSize: "1.6rem", color: "var(--denim-900)" }}>Estimate Your Savings</h3>
+            <h3 style={{ marginBottom: 24, fontSize: "1.6rem", color: "var(--ink)" }}>Estimate Your Savings</h3>
             <div className="roi-input-group">
               <label>
                 <span style={{ fontWeight: 600, color: "var(--muted)", marginBottom: 8, display: "block" }}>Monthly Order Volume (Pcs)</span>

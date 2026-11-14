@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import Lookup from "./Lookup";
 import { useApp } from "../store";
@@ -16,6 +16,7 @@ export interface FieldDef {
   filter?: Record<string, any>;
   depends?: string;
   unique?: boolean;
+  no_empty?: boolean;
 }
 
 export const showIf = (f: FieldDef, form: Record<string, any>): boolean =>
@@ -30,6 +31,68 @@ export interface InputProps {
   compact?: boolean;
   invalid?: boolean;
   disabled?: boolean;
+}
+
+const INDIA_STATES = [
+  "Andaman and Nicobar Islands",
+  "Andhra Pradesh",
+  "Arunachal Pradesh",
+  "Assam",
+  "Bihar",
+  "Chandigarh",
+  "Chhattisgarh",
+  "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi",
+  "Goa",
+  "Gujarat",
+  "Haryana",
+  "Himachal Pradesh",
+  "Jammu and Kashmir",
+  "Jharkhand",
+  "Karnataka",
+  "Kerala",
+  "Ladakh",
+  "Lakshadweep",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Manipur",
+  "Meghalaya",
+  "Mizoram",
+  "Nagaland",
+  "Odisha",
+  "Puducherry",
+  "Punjab",
+  "Rajasthan",
+  "Sikkim",
+  "Tamil Nadu",
+  "Telangana",
+  "Tripura",
+  "Uttar Pradesh",
+  "Uttarakhand",
+  "West Bengal",
+];
+
+function AutoTextarea({ value, disabled, invalid, onChange }: { value: string; disabled?: boolean; invalid?: boolean; onChange: (val: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      disabled={disabled}
+      className={invalid ? "err" : ""}
+      style={{ minHeight: 0, height: "auto", resize: "none", overflow: "hidden" }}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
 }
 
 /** Bare input for a field definition (used in forms and grid cells). */
@@ -55,8 +118,8 @@ export function Input({ f, value, label, onChange, compact, invalid, disabled }:
       );
     case "select":
       return (
-        <select value={v} disabled={disabled} className={invalid ? "err" : ""} onChange={(e) => set(e.target.value || null)}>
-          <option value="">Select…</option>
+        <select value={v || (f.no_empty ? f.default || f.options?.[0] : "")} disabled={disabled} className={invalid ? "err" : ""} onChange={(e) => set(e.target.value || null)}>
+          {!f.no_empty && <option value="">Select…</option>}
           {(f.options || []).filter(Boolean).map((o) => (
             <option key={o} value={o}>
               {o}
@@ -91,8 +154,24 @@ export function Input({ f, value, label, onChange, compact, invalid, disabled }:
         />
       );
     case "readonly":
-      return <input value={v} readOnly placeholder="Auto" />;
+      return <input value={v || ""} readOnly placeholder="" style={{ background: "var(--field-bg, rgba(0,0,0,0.03))", cursor: "not-allowed" }} />;
     default:
+      if (f.name === "address" && !compact) {
+        return <AutoTextarea value={v} disabled={disabled} invalid={invalid} onChange={set} />;
+      }
+      if (f.name === "state" && !compact) {
+        const opts = v && !INDIA_STATES.includes(v) ? [v, ...INDIA_STATES] : INDIA_STATES;
+        return (
+          <select value={v} disabled={disabled} className={invalid ? "err" : ""} onChange={(e) => set(e.target.value || null)}>
+            <option value="">Select…</option>
+            {opts.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        );
+      }
       return <input value={v} disabled={disabled} className={invalid ? "err" : ""} onChange={(e) => set(e.target.value)} />;
   }
 }
@@ -111,11 +190,18 @@ export function Field({ f, form, setForm, error, disabled, clearError }: FieldPr
   if (f.type === "attrs") return <AttrPanel f={f} form={form} setForm={setForm} disabled={disabled} />;
 
   const set = (val: any, row?: any) => {
-    setForm((p: any) => ({
-      ...p,
-      [f.name]: val,
-      [f.name + "__label"]: row ? row.label || row.name : undefined,
-    }));
+    setForm((p: any) => {
+      const next: any = {
+        ...p,
+        [f.name]: val,
+        [f.name + "__label"]: row ? row.label || row.name : undefined,
+      };
+      if (f.name === "product_id" && row && row.uom_id && !p.uom_id) {
+        next.uom_id = row.uom_id;
+        next.uom_id__label = row.uom_id__label || row.uom__label;
+      }
+      return next;
+    });
     if (clearError) clearError();
   };
 

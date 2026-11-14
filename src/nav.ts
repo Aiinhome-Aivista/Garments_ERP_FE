@@ -38,7 +38,8 @@ export function buildNav(
     txn_type: 11,
     uom: 12,
     product: 13,
-    pricelist: 14,
+    bom: 14,
+    pricelist: 15,
   };
 
   const masterRankByLabel: Record<string, number> = {
@@ -79,8 +80,11 @@ export function buildNav(
     "uom": 12,
     "products": 13,
     "product": 13,
-    "price lists": 14,
-    "price list": 14,
+    "bom master": 14,
+    "bill of materials": 14,
+    "bom": 14,
+    "price lists": 15,
+    "price list": 15,
   };
 
   const getMasterRank = (m: any): number => {
@@ -94,7 +98,16 @@ export function buildNav(
     return 999;
   };
 
-  const allMasters = Object.values(meta.masters || {})
+  const rawMasters: Record<string, any> = { ...(meta.masters || {}) };
+  if (!rawMasters.bom) {
+    rawMasters.bom = {
+      key: "bom",
+      label: "BOM Master",
+      group: "Production",
+      icon: "layers",
+    };
+  }
+  const allMasters = Object.values(rawMasters)
     .filter((m: any) => !m.hidden)
     .sort((a: any, b: any) => {
       const rankA = getMasterRank(a);
@@ -152,6 +165,7 @@ export function buildNav(
 
   // 3. Production Cycle
   const floorItems = filterItems([
+    { label: "BOM Master", to: "/masters/bom", icon: "layers", res: "bom" },
     { label: "Production planning", to: "/planning", icon: "clipboard", res: "planning" },
     { label: "Requisition for PO", to: "/requisitions", icon: "tag", res: "requisition" },
     { label: "Stock", to: "/stock", icon: "layers", res: "stock_report" },

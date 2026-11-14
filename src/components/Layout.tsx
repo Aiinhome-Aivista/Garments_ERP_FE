@@ -73,11 +73,23 @@ export default function Layout() {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [pal, setPal] = useState(false);
-  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const [opened, setOpened] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem("loomline.nav_opened");
+      if (saved) return JSON.parse(saved);
+    } catch { }
+    return { Masters: true, Transactions: true, "Production Cycle": true };
+  });
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("side_collapsed") === "true");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const loc = useLocation();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("loomline.nav_opened", JSON.stringify(opened));
+    } catch { }
+  }, [opened]);
 
   useEffect(() => {
     const unsub = onBusy(setBusy);
@@ -88,7 +100,7 @@ export default function Layout() {
   useEffect(() => {
     setOpen(false);
     setUserMenuOpen(false);
-    
+
     let title = "Dashboard";
     if (loc.pathname.includes("masters")) title = "Masters";
     else if (loc.pathname.includes("vouchers")) title = "Vouchers";
@@ -99,7 +111,7 @@ export default function Layout() {
     else if (loc.pathname.includes("admin")) title = "Admin Settings";
     document.title = `${title} | Loomline ERP`;
   }, [loc.pathname]);
-  
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {

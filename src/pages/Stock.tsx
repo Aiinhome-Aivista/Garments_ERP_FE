@@ -118,11 +118,28 @@ export default function Stock() {
                       <b>{r.item_name}</b>
                     </td>
                     <td>{r.category}</td>
-                    <td>{r.uom}</td>
-                    <td className="num">{qty(r.on_hand)}</td>
+                    <td>
+                      <div><b>{r.uom}</b></div>
+                      {r.composite_free && (
+                        <div style={{ fontSize: 11, color: "var(--denim-600)", fontWeight: 600 }}>
+                          {r.composite_free}
+                        </div>
+                      )}
+                    </td>
+                    <td className="num">
+                      <div>{qty(r.on_hand)}</div>
+                      {r.composite_on_hand && (
+                        <div style={{ fontSize: 11, color: "var(--muted)" }}>{r.composite_on_hand}</div>
+                      )}
+                    </td>
                     <td className="num">{qty(r.reserved)}</td>
                     <td className="num">
                       <b style={{ color: low ? "var(--red)" : "inherit" }}>{qty(r.free)}</b>
+                      {r.composite_free && (
+                        <div style={{ fontSize: 11, color: "var(--denim-600)", fontWeight: 600 }}>
+                          {r.composite_free}
+                        </div>
+                      )}
                     </td>
                     <td className="num">
                       {r.min_stock ? qty(r.min_stock) : "—"} {low && <span className="htag Pending">Low</span>}
@@ -172,7 +189,12 @@ export default function Stock() {
                   <td>{r.godown}</td>
                   <td>{r.bin_no}</td>
                   <td className="num">
-                    {qty(r.balance)} {r.uom}
+                    <div><b>{qty(r.balance)} {r.uom}</b></div>
+                    {r.composite && (
+                      <div style={{ fontSize: 11, color: "var(--denim-600)", fontWeight: 600 }}>
+                        {r.composite}
+                      </div>
+                    )}
                   </td>
                   <td>{fdate(r.since)}</td>
                 </tr>

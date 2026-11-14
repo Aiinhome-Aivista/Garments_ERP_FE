@@ -22,13 +22,43 @@ export default function VoucherList() {
   const [q, setQ] = useState("");
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [activeFilterCol, setActiveFilterCol] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Record<number, boolean>>({});
+  const [itemsById, setItemsById] = useState<Record<number, any[]>>({});
+  const [loadingIds, setLoadingIds] = useState<Record<number, boolean>>({});
+  const [errorIds, setErrorIds] = useState<Record<number, string>>({});
 
   useEffect(() => {
     setRows(null);
     setPage(1);
     setFilters({});
     setQ("");
+    setExpandedIds({});
+    setItemsById({});
+    setLoadingIds({});
+    setErrorIds({});
   }, [doc, sp]);
+
+  const toggleExpand = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    const isExpanded = !!expandedIds[id];
+    setExpandedIds((prev) => ({ ...prev, [id]: !isExpanded }));
+    if (!isExpanded && !itemsById[id] && !loadingIds[id]) {
+      setLoadingIds((prev) => ({ ...prev, [id]: true }));
+      setErrorIds((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      try {
+        const res = await api<any>(`/vouchers/${doc}/${id}`, { quiet: true });
+        setItemsById((prev) => ({ ...prev, [id]: res?.items || [] }));
+      } catch (err: any) {
+        setErrorIds((prev) => ({ ...prev, [id]: err?.message || "Failed to load line items" }));
+      } finally {
+        setLoadingIds((prev) => ({ ...prev, [id]: false }));
+      }
+    }
+  };
 
   useEffect(() => {
     if (!doc) return;
@@ -93,6 +123,7 @@ export default function VoucherList() {
           <table className="tbl">
             <thead>
               <tr>
+                <th style={{ width: 40 }} />
                 <th>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     Voucher No
@@ -129,24 +160,97 @@ export default function VoucherList() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="click" onClick={() => nav(`/vouchers/${doc}/${r.id}`)}>
-                  <td>
-                    <b>{r.voucher_no}</b>{" "}
-                    {r.source_channel === "api" && (
-                      <span className="htag Closed" title="Created through the API">
-                        API
-                      </span>
-                    )}
-                  </td>
-                  <td>{fdate(r.voucher_date)}</td>
-                  <td>{r.party_name}</td>
-                  <td className="muted">{r.txn_type}</td>
-                  <td className="num">{qty(r.total_qty)}</td>
-                  <td className="num">{money(r.total_value)}</td>
-                  <td>
-                    <span className={"htag " + r.approval_status}>{r.approval_status}</span>
-                  </td>
-                </tr>
+                <React.Fragment key={r.id}>
+                  <tr className="click" onClick={() => nav(`/vouchers/${doc}/${r.id}`)}>
+                    <td style={{ width: 40, textAlign: "center" }} onClick={(e) => toggleExpand(e, r.id)}>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label={expandedIds[r.id] ? "Collapse line items" : "Expand line items"}
+                        title={expandedIds[r.id] ? "Hide items" : "Show items"}
+                        style={{
+                          width: 24,
+                          height: 24,
+                          padding: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          border: "1px solid var(--line)",
+                          borderRadius: 4,
+                          background: expandedIds[r.id] ? "var(--tape)" : "var(--paper)",
+                          color: expandedIds[r.id] ? "var(--denim-950)" : "var(--ink)",
+                        }}
+                      >
+                        <Icon name={expandedIds[r.id] ? "minus" : "plus"} size={14} />
+                      </button>
+                    </td>
+                    <td>
+                      <b>{r.voucher_no}</b>{" "}
+                      {r.source_channel === "api" && (
+                        <span className="htag Closed" title="Created through the API">
+                          API
+                        </span>
+                      )}
+                    </td>
+                    <td>{fdate(r.voucher_date)}</td>
+                    <td>{r.party_name}</td>
+                    <td className="muted">{r.txn_type}</td>
+                    <td className="num">{qty(r.total_qty)}</td>
+                    <td className="num">{money(r.total_value)}</td>
+                    <td>
+                      <span className={"htag " + r.approval_status}>{r.approval_status}</span>
+                    </td>
+                  </tr>
+                  {expandedIds[r.id] && (
+                    <tr className="expanded-row">
+                      <td colSpan={8} style={{ padding: "12px 16px 16px 48px", background: "var(--chalk)", borderBottom: "1px solid var(--line)" }}>
+                        {loadingIds[r.id] ? (
+                          <div className="muted" style={{ padding: "8px 0" }}>Loading line items…</div>
+                        ) : errorIds[r.id] ? (
+                          <div style={{ color: "var(--red)", padding: "8px 0" }}>{errorIds[r.id]}</div>
+                        ) : !(itemsById[r.id]?.length) ? (
+                          <div className="muted" style={{ padding: "8px 0" }}>No line items found.</div>
+                        ) : (
+                          <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden", background: "var(--paper)" }}>
+                            <table className="tbl" style={{ fontSize: "13.5px" }}>
+                              <thead>
+                                <tr>
+                                  <th style={{ width: 50, textAlign: "center" }}>#</th>
+                                  <th>Item Name</th>
+                                  <th>UOM</th>
+                                  <th className="num">Qty</th>
+                                  <th className="num">Rate</th>
+                                  <th className="num">Disc %</th>
+                                  <th className="num">GST %</th>
+                                  <th className="num">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {itemsById[r.id].map((it: any, idx: number) => (
+                                  <tr key={it.id || idx}>
+                                    <td style={{ textAlign: "center" }} className="muted">{it.line_no ?? idx + 1}</td>
+                                    <td>
+                                      <b>{it.product_id__label || it.description || "—"}</b>
+                                      {it.description && it.product_id__label && it.description !== it.product_id__label && (
+                                        <div className="muted" style={{ fontSize: 12 }}>{it.description}</div>
+                                      )}
+                                    </td>
+                                    <td className="muted">{it.uom || "—"}</td>
+                                    <td className="num">{qty(it.qty)}</td>
+                                    <td className="num">{money(it.rate)}</td>
+                                    <td className="num">{Number(it.disc_pct || 0) > 0 ? `${it.disc_pct}%` : "—"}</td>
+                                    <td className="num">{it.gst_rate != null ? `${it.gst_rate}%` : "—"}</td>
+                                    <td className="num"><b>{money(it.net_amount)}</b></td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

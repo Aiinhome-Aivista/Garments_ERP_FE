@@ -1,18 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, fdate, money, qs, qty as fq, today } from "../api";
-import { calcItem, calcTotals } from "../lib_calc";
+import { calcItem, calcTotals, getGstType } from "../lib_calc";
 import Icon from "../components/Icons";
 import Lookup from "../components/Lookup";
 import { Btn, Skeleton, StitchLoader } from "../components/Loaders";
 import { useApp } from "../store";
 
-const NUMERIC = ["qty", "rate", "disc_pct", "disc_amt"];
+const NUMERIC = ["qty", "rate", "disc_pct", "disc_amt", "gst_rate"];
 const KEEP = [
   "barcode",
   "godown_id",
   "bin_no",
   "product_id",
+  "uom_id",
+  "factor",
   "description",
   "customer_item_name",
   "qty",
@@ -20,6 +22,7 @@ const KEEP = [
   "rate",
   "disc_pct",
   "disc_amt",
+  "gst_rate",
   "delivery_date",
   "salesman_id",
   "broker_id",
@@ -41,7 +44,7 @@ function getAudioContext(): AudioContext | null {
       }
     }
     if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
-      sharedAudioCtx.resume().catch(() => {});
+      sharedAudioCtx.resume().catch(() => { });
     }
     return sharedAudioCtx;
   } catch {
@@ -72,7 +75,7 @@ function beep(ok = true) {
     const a = getAudioContext();
     if (!a) return;
     if (a.state === "suspended") {
-      a.resume().then(() => playOscillator(a, ok)).catch(() => {});
+      a.resume().then(() => playOscillator(a, ok)).catch(() => { });
     } else {
       playOscillator(a, ok);
     }
@@ -424,7 +427,7 @@ function SourcePicker({ doc, src, isOutward = false, partyId, partyLabel, exclud
                                   type="radio"
                                   name="onePicker"
                                   checked={one === l.src_header_id}
-                                  onChange={() => {}}
+                                  onChange={() => { }}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setOne(one === l.src_header_id ? null : l.src_header_id);
@@ -545,8 +548,8 @@ function SourcePicker({ doc, src, isOutward = false, partyId, partyLabel, exclud
                               {Number(l.disc_pct) > 0
                                 ? `${l.disc_pct}%`
                                 : Number(l.disc_amt) > 0
-                                ? money(l.disc_amt)
-                                : "—"}
+                                  ? money(l.disc_amt)
+                                  : "—"}
                             </td>
                             {hasIndentCol && (
                               <td>
@@ -673,12 +676,38 @@ export default function VoucherForm() {
     setRec(null);
     setPicked([]);
     setScannedList([]);
+
+    // Auto-fetch default transaction type and next number immediately
+    try {
+      const ttList = await api<any>(`/masters/txn_type?f_txn_kind=${encodeURIComponent(cfg.kind)}&active=1`, { quiet: true });
+      const defaultTt = ttList?.rows?.[0];
+      if (defaultTt) {
+        const nx = await api<{ voucher_no: string }>(`/vouchers/${doc}/next-number?txn_type_id=${defaultTt.id}`, { quiet: true });
+        setHead({
+          txn_type_id: defaultTt.id,
+          txn_type_id__label: defaultTt.name,
+          voucher_no: nx?.voucher_no || "",
+        });
+        const ttData = await api<{ terms: any[] }>(`/masters/txn_type/${defaultTt.id}`, { quiet: true });
+        if (ttData?.terms?.length) {
+          setTerms(ttData.terms.map((t) => ({ description: t.description })));
+        }
+      }
+    } catch (_) {}
   }, [doc, cfg]); // eslint-disable-line
 
   const hydrate = (v: any) => {
     setRec(v);
     setH({ ...v });
-    setItems(v.items.map((i: any) => ({ ...i, uom: i.uom })));
+    setItems(
+      v.items.map((i: any) => ({
+        ...i,
+        uom: i.uom,
+        uom_id: i.uom_id || i.main_uom_id,
+        factor: i.factor || 1,
+        available_uoms: i.available_uoms || [],
+      }))
+    );
     setLedgers(v.ledgers);
     setTerms(v.terms);
     setPays(v.payments);
@@ -695,9 +724,12 @@ export default function VoucherForm() {
               setItem(idx, {
                 has_pricelist: !!p.has_pricelist,
                 available_pricelists: p.available_pricelists || [],
+                available_uoms: p.uoms || [],
+                gst_type: p.gst_type || "Flat",
+                gst_slabs: p.gst_slabs || [],
               });
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       });
     }
@@ -713,7 +745,7 @@ export default function VoucherForm() {
               const ownQty = v.approval_status === "Approved" ? Number(it.qty ?? 0) : 0;
               setItem(idx, { stock_qty: curBal + ownQty });
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       });
     }
@@ -753,7 +785,7 @@ export default function VoucherForm() {
     }
     api<any[]>(`/vouchers/${doc}/ref-vouchers?party_id=${h.party_id}`, { quiet: true })
       .then(setRefOpts)
-      .catch(() => {});
+      .catch(() => { });
   }, [h?.party_id, doc]); // eslint-disable-line
 
   const totals = useMemo(() => calcTotals(items, ledgers), [items, ledgers]);
@@ -778,6 +810,9 @@ export default function VoucherForm() {
       rows.map((r, j) => {
         if (j !== i) return r;
         const n = { ...r, ...patch };
+        if ("gst_rate" in patch) {
+          n.is_manual_gst = true;
+        }
         if ("disc_pct" in patch) {
           if (Number(patch.disc_pct) > 0) {
             n.disc_amt = calcItem(n).disc_amt;
@@ -794,6 +829,9 @@ export default function VoucherForm() {
         }
         const calc = calcItem(n);
         n.net_amount = calc.net_amount;
+        if (!n.is_manual_gst && n.gst_type === "Slab") {
+          n.gst_rate = calc.resolved_gst_rate;
+        }
         if (Number(n.disc_pct) > 0) {
           n.disc_amt = calc.disc_amt;
         } else if (n.disc_amt === "" || Number(n.disc_amt) === 0) {
@@ -856,14 +894,23 @@ export default function VoucherForm() {
         rate: "",
         disc_pct: "",
         disc_amt: "",
+        gst_rate: "",
       });
       return;
     }
-    setItem(i, { product_id: pid, product_id__label: row.label, uom: row.uom_id__label });
+    const gstRate = row?.gst_rate !== undefined && row?.gst_rate !== null ? Number(row.gst_rate) : 0;
+    setItem(i, {
+      product_id: pid,
+      product_id__label: row.label,
+      uom: row.uom_id__label,
+      uom_id: row.uom_id,
+      factor: 1,
+      gst_rate: gstRate,
+    });
     if (cfg?.stock < 0) {
       api<{ balance: number }>(`/stock/balance?product_id=${pid}`, { quiet: true })
         .then((res) => setItem(i, { stock_qty: Number(res.balance ?? 0) }))
-        .catch(() => {});
+        .catch(() => { });
     }
     try {
       const p = await api<any>(
@@ -876,6 +923,21 @@ export default function VoucherForm() {
           const n = { ...r };
           n.has_pricelist = !!p.has_pricelist;
           n.available_pricelists = p.available_pricelists || [];
+          n.available_uoms = p.uoms || [];
+          n.gst_type = p.gst_type || "Flat";
+          n.gst_slabs = p.gst_slabs || [];
+          n.is_manual_gst = false;
+          if (p.main_uom_id && (!n.uom_id || n.uom_id === p.main_uom_id)) {
+            n.uom_id = p.main_uom_id;
+            n.uom = p.main_uom_name;
+            n.factor = 1;
+            n.allow_fraction = p.allow_fraction;
+          }
+          if (p.gst_rate !== undefined && p.gst_rate !== null) {
+            n.gst_rate = Number(p.gst_rate);
+          } else if (n.gst_rate === undefined || n.gst_rate === "") {
+            n.gst_rate = gstRate;
+          }
           if (doc !== "sales_order" && p.pricelist_id) {
             n.pricelist_id = p.pricelist_id;
             n.pricelist_id__label = p.pricelist_label;
@@ -945,6 +1007,9 @@ export default function VoucherForm() {
       product_id__label: l.item_name,
       stock_qty: l.stock_qty !== undefined ? Number(l.stock_qty) : undefined,
       uom: l.uom,
+      uom_id: l.uom_id,
+      factor: l.factor || 1,
+      available_uoms: l.available_uoms || [],
       description: l.description,
       customer_item_name: l.customer_item_name,
       qty: isChallan ? 0 : l.take,
@@ -956,6 +1021,7 @@ export default function VoucherForm() {
       rate: l.rate ?? "",
       disc_pct: Number(l.disc_pct) || "",
       disc_amt: Number(l.disc_pct) ? "" : Number(l.disc_amt) || "",
+      gst_rate: l.gst_rate !== undefined && l.gst_rate !== null ? Number(l.gst_rate) : 0,
       delivery_date: l.delivery_date,
       barcode: l.barcode || "",
       godown_id: l.godown_id,
@@ -1000,7 +1066,52 @@ export default function VoucherForm() {
       });
     }
 
-    setPicked((p) => [...new Set([...p, ...lines.map((l) => l.src_header_id).filter(Boolean)])]);
+    const newHids = [...new Set(lines.map((l) => l.src_header_id).filter(Boolean))];
+    setPicked((p) => [...new Set([...p, ...newHids])]);
+
+    // Automatically fetch and populate ledgers / additional charges from source vouchers (e.g. PO -> GRN)
+    if (newHids.length > 0 && doc === "grn") {
+      api<any[]>(`/vouchers/${doc}/source-ledgers`, {
+        method: "POST",
+        body: { header_ids: newHids },
+        quiet: true,
+      })
+        .then((sourceCharges) => {
+          if (sourceCharges && sourceCharges.length > 0) {
+            setLedgers((cur) => {
+              const res = [...cur];
+              sourceCharges.forEach((sc) => {
+                const exIdx = res.findIndex((x) => x.ledger_id === sc.ledger_id);
+                if (exIdx >= 0) {
+                  // If same ledger already present and value-based, combine rate & amount
+                  if (res[exIdx].rate_in === "value" && sc.rate_in === "value") {
+                    res[exIdx] = {
+                      ...res[exIdx],
+                      rate: Number(res[exIdx].rate || 0) + Number(sc.rate || 0),
+                      amount: Number(res[exIdx].amount || 0) + Number(sc.amount || 0),
+                    };
+                  }
+                } else {
+                  res.push({
+                    ledger_id: sc.ledger_id,
+                    ledger_id__label: sc.ledger_id__label,
+                    rate: sc.rate ?? 0,
+                    rate_in: sc.rate_in || "value",
+                    rate_on: sc.rate_on || "auto",
+                    gst_position: sc.gst_position || "after_gst",
+                    ledger_type: sc.ledger_type || "General",
+                    tax_type: sc.tax_type,
+                  });
+                }
+              });
+              return res;
+            });
+            toast(`Auto-populated ${sourceCharges.length} additional charge(s) from Purchase Order`);
+          }
+        })
+        .catch(() => {});
+    }
+
     pool.current = null;
     setPicker(false);
   };
@@ -1411,6 +1522,7 @@ export default function VoucherForm() {
             rate: ri.rate ?? "",
             disc_pct: Number(ri.disc_pct) || "",
             disc_amt: Number(ri.disc_pct) ? "" : ri.disc_amt || "",
+            gst_rate: pr.gst_rate !== undefined && pr.gst_rate !== null ? Number(pr.gst_rate) : (ri.gst_rate ?? 0),
             salesman_id: ri.salesman_id,
             broker_id: ri.broker_id,
             retailer_name: ri.retailer_name,
@@ -1453,7 +1565,27 @@ export default function VoucherForm() {
     items: items.filter((i) => i.product_id).map((i) => Object.fromEntries(KEEP.map((k) => [k, i[k] ?? null]))),
     ledgers: ledgers
       .filter((l) => l.ledger_id)
-      .map((l) => ({ ledger_id: l.ledger_id, rate: l.rate || 0, rate_in: l.rate_in || "percent", rate_on: l.rate_on || "auto" })),
+      .map((l, idx) => {
+        const gstType = getGstType(l);
+        if (gstType) {
+          const calcAmt = totals.ledgers[idx]?.amount ?? 0;
+          return {
+            ledger_id: l.ledger_id,
+            rate: calcAmt,
+            amount: calcAmt,
+            rate_in: "value",
+            rate_on: "auto",
+            gst_position: "after_gst",
+          };
+        }
+        return {
+          ledger_id: l.ledger_id,
+          rate: l.rate || 0,
+          rate_in: l.rate_in || "percent",
+          rate_on: l.rate_on || "auto",
+          gst_position: l.gst_position || "after_gst",
+        };
+      }),
     terms,
     payments: pays,
   });
@@ -1546,7 +1678,14 @@ export default function VoucherForm() {
         method: "POST",
         body: { party_id: h.party_id, branch_id: h.branch_id, items: items.filter((i) => i.product_id) },
       });
-      setLedgers((cur) => [...cur.filter((l) => !r.lines.some((x: any) => x.ledger_id === l.ledger_id)), ...r.lines]);
+      setLedgers((cur) => [
+        ...cur.filter((l) => !getGstType(l)),
+        ...r.lines.map((nl: any) => ({
+          ...nl,
+          rate_in: "value",
+          rate_on: "auto",
+        })),
+      ]);
       toast(r.inter_state ? "IGST applied (different state)" : "CGST + SGST applied");
     } catch (e: any) {
       toast(e.message, "err");
@@ -1575,7 +1714,43 @@ export default function VoucherForm() {
   const cell = (i: number, row: any, c: string) => {
     const def = cols[c] || { label: "UOM", type: "text", readonly: true };
     const off = !editable;
-    if (c === "uom") return <span className="muted">{row.uom}</span>;
+    if (c === "uom") {
+      const uomList: any[] =
+        row.available_uoms && row.available_uoms.length > 0
+          ? row.available_uoms
+          : row.uom
+          ? [{ uom_id: row.uom_id, name: row.uom, conversion_factor: row.factor || 1, allow_fraction: row.allow_fraction }]
+          : [];
+      if (off || !row.product_id) {
+        return <span className="muted" style={{ padding: "0 8px", fontWeight: 600 }}>{row.uom || "—"}</span>;
+      }
+      return (
+        <select
+          className="fld-input"
+          style={{ width: "100%", minWidth: 70, padding: "3px 6px", fontSize: 13, height: 32 }}
+          value={row.uom_id || ""}
+          disabled={off || !row.product_id}
+          onChange={(e) => {
+            const val = Number(e.target.value);
+            const sel = uomList.find((u: any) => Number(u.uom_id) === val);
+            if (sel) {
+              setItem(i, {
+                uom_id: sel.uom_id,
+                uom: sel.name,
+                factor: sel.conversion_factor,
+                allow_fraction: sel.allow_fraction,
+              });
+            }
+          }}
+        >
+          {uomList.map((u: any) => (
+            <option key={u.uom_id} value={u.uom_id}>
+              {u.name}
+            </option>
+          ))}
+        </select>
+      );
+    }
     if (c === "net_amount")
       return (
         <span className="num" style={{ display: "block", padding: "0 8px", fontWeight: 700 }}>
@@ -1642,7 +1817,7 @@ export default function VoucherForm() {
                 { quiet: true }
               )
                 .then((res) => setItem(i, { stock_qty: Number(res.balance ?? 0) }))
-                .catch(() => {});
+                .catch(() => { });
             }
           }}
         />
@@ -1682,6 +1857,10 @@ export default function VoucherForm() {
             onChange={(e) => {
               if (!/^\d*\.?\d*$/.test(e.target.value)) return;
               const val = e.target.value;
+              if (val.includes(".") && row.allow_fraction === false) {
+                toast(`Fractional / decimal quantity is not allowed for unit '${row.uom || "this UOM"}'.`, "warn");
+                return;
+              }
               const numVal = Number(val) || 0;
               if (isOutward && row.stock_qty !== undefined && numVal > Number(row.stock_qty)) {
                 toast(`Insufficient stock! Available in stock: ${row.stock_qty}. Stock cannot be negative.`, "err");
@@ -1700,15 +1879,15 @@ export default function VoucherForm() {
                   color: isExceeded
                     ? "var(--red, #dc2626)"
                     : isFullyVerified
-                    ? "var(--moss, #16a34a)"
-                    : "var(--denim-600, #4f46e5)",
+                      ? "var(--moss, #16a34a)"
+                      : "var(--denim-600, #4f46e5)",
                 }}
               >
                 {isExceeded
                   ? `⚠️ Exceeded: ${row.qty}/${ordQty}`
                   : isFullyVerified
-                  ? `✓ Verified: ${row.qty}/${ordQty}`
-                  : `Order: ${ordQty} (Scan: ${row.qty || 0})`}
+                    ? `✓ Verified: ${row.qty}/${ordQty}`
+                    : `Order: ${ordQty} (Scan: ${row.qty || 0})`}
               </span>
             ) : null}
             {isOutward && row.stock_qty !== undefined && (
@@ -1725,6 +1904,19 @@ export default function VoucherForm() {
             )}
           </div>
         </div>
+      );
+    }
+    if (c === "gst_rate") {
+      return (
+        <input
+          className="n"
+          inputMode="decimal"
+          disabled={off}
+          value={row.gst_rate === 0 ? "0" : (row.gst_rate ?? "")}
+          placeholder="0"
+          title="GST % applicable to this item"
+          onChange={(e) => /^\d*\.?\d*$/.test(e.target.value) && setItem(i, { gst_rate: e.target.value })}
+        />
       );
     }
     if (NUMERIC.includes(c)) {
@@ -1845,7 +2037,7 @@ export default function VoucherForm() {
           </label>
           <label className="fld">
             <span>Voucher no</span>
-            <input readOnly value={h.voucher_no || ""} placeholder="Assigned on save" />
+            <input readOnly value={h.voucher_no || ""} placeholder="" />
           </label>
           <label className="fld">
             <span>Date *</span>
@@ -2159,99 +2351,141 @@ export default function VoucherForm() {
             <thead>
               <tr>
                 <th className="sl">Sl No.</th>
-                <th style={{ width: 240 }}>Ledger name</th>
+                <th style={{ width: 220 }}>Ledger name</th>
+                <th style={{ width: 140 }}>GST Position</th>
                 <th className="num" style={{ width: 110 }}>
                   Rate
                 </th>
-                <th style={{ width: 120 }}>Rate in</th>
-                <th style={{ width: 200 }}>Rate on</th>
-                <th className="num" style={{ width: 130 }}>
+                <th style={{ width: 110 }}>Rate in</th>
+                <th style={{ width: 180 }}>Rate on</th>
+                <th className="num" style={{ width: 120 }}>
                   Amount
                 </th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {ledgers.map((l, i) => (
-                <tr key={i}>
-                  <td className="sl">{i + 1}</td>
-                  <td>
-                    <Lookup
-                      master="ledger"
-                      filter={{ ledger_type: "General,Discount" }}
-                      placeholder=""
-                      value={l.ledger_id}
-                      label={l.ledger_id__label}
-                      disabled={!editable}
-                      onChange={(v, r) =>
-                        setLedgers(
-                          ledgers.map((x, j) =>
-                            j === i ? { ...x, ledger_id: v, ledger_id__label: r?.label, ledger_type: r?.ledger_type } : x
-                          )
-                        )
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="n"
-                      inputMode="decimal"
-                      disabled={!editable}
-                      value={l.rate === 0 ? "" : (l.rate ?? "")}
-                      placeholder="0"
-                      onChange={(e) =>
-                        /^-?\d*\.?\d*$/.test(e.target.value) &&
-                        setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate: e.target.value } : x)))
-                      }
-                    />
-                  </td>
-                  <td>
-                    <select
-                      disabled={!editable}
-                      value={l.rate_in || ""}
-                      onChange={(e) =>
-                        setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate_in: e.target.value } : x)))
-                      }
-                    >
-                      <option value="">Select…</option>
-                      {meta?.rate_in?.map((o: string) => (
-                        <option key={o} value={o}>
-                          {o === "percent" ? "Percent" : "Value"}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <select
-                      disabled={!editable}
-                      value={l.rate_on || ""}
-                      onChange={(e) =>
-                        setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate_on: e.target.value } : x)))
-                      }
-                    >
-                      <option value="">Select…</option>
-                      {meta?.rate_on?.map((o: any) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="num">
-                    <b>{money(totals.ledgers[i]?.amount)}</b>
-                  </td>
-                  <td>
-                    {editable && (
-                      <button type="button" className="icon-btn del" onClick={() => setLedgers(ledgers.filter((_, j) => j !== i))}>
-                        <Icon name="trash" size={18} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {
+                ledgers.map((l, i) => {
+                  const gstType = getGstType(l);
+                  const isGst = !!gstType;
+                  const calcAmt = totals.ledgers[i]?.amount ?? 0;
+                  return (
+                    <tr key={i}>
+                      <td className="sl">{i + 1}</td>
+                      <td>
+                        <Lookup
+                          master="ledger"
+                          filter={{ ledger_type: "General,Discount" }}
+                          placeholder=""
+                          value={l.ledger_id}
+                          label={l.ledger_id__label}
+                          disabled={!editable}
+                          onChange={(v, r) =>
+                            setLedgers(
+                              ledgers.map((x, j) =>
+                                j === i ? { ...x, ledger_id: v, ledger_id__label: r?.label, ledger_type: r?.ledger_type, tax_type: r?.tax_type } : x
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        {isGst ? (
+                          <span className="muted" style={{ padding: "4px 8px", fontSize: 13 }}>Tax Line</span>
+                        ) : (
+                          <select
+                            disabled={!editable}
+                            value={l.gst_position || "after_gst"}
+                            onChange={(e) =>
+                              setLedgers(ledgers.map((x, j) => (j === i ? { ...x, gst_position: e.target.value } : x)))
+                            }
+                          >
+                            <option value="before_gst">Before GST</option>
+                            <option value="after_gst">After GST</option>
+                          </select>
+                        )}
+                      </td>
+                      <td>
+                        {isGst ? (
+                          <input
+                            className="n readonly-locked"
+                            disabled
+                            readOnly
+                            value={money(calcAmt)}
+                            title="Calculated GST Amount from item GST rates"
+                            style={{ backgroundColor: "var(--denim-100, #e1e7f5)", cursor: "not-allowed", fontWeight: 600 }}
+                          />
+                        ) : (
+                          <input
+                            className="n"
+                            inputMode="decimal"
+                            disabled={!editable}
+                            value={l.rate === 0 ? "" : (l.rate ?? "")}
+                            placeholder="0"
+                            onChange={(e) =>
+                              /^-?\d*\.?\d*$/.test(e.target.value) &&
+                              setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate: e.target.value } : x)))
+                            }
+                          />
+                        )}
+                      </td>
+                      <td>
+                        {isGst ? (
+                          <span className="muted" style={{ padding: "4px 8px", fontSize: 13 }}>Amount</span>
+                        ) : (
+                          <select
+                            disabled={!editable}
+                            value={l.rate_in || ""}
+                            onChange={(e) =>
+                              setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate_in: e.target.value } : x)))
+                            }
+                          >
+                            <option value="">Select…</option>
+                            {meta?.rate_in?.map((o: string) => (
+                              <option key={o} value={o}>
+                                {o === "percent" ? "Percent" : "Value"}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td>
+                        {isGst ? (
+                          <span className="muted" style={{ padding: "4px 8px", fontSize: 13 }}>Item GST %</span>
+                        ) : (
+                          <select
+                            disabled={!editable}
+                            value={l.rate_on || ""}
+                            onChange={(e) =>
+                              setLedgers(ledgers.map((x, j) => (j === i ? { ...x, rate_on: e.target.value } : x)))
+                            }
+                          >
+                            <option value="">Select…</option>
+                            {meta?.rate_on?.map((o: any) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td className="num">
+                        <b>{money(totals.ledgers[i]?.amount)}</b>
+                      </td>
+                      <td>
+                        {editable && (
+                          <button type="button" className="icon-btn del" onClick={() => setLedgers(ledgers.filter((_, j) => j !== i))}>
+                            <Icon name="trash" size={18} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               {!ledgers.length && (
                 <tr>
-                  <td colSpan={7} className="muted" style={{ padding: 12 }}>
+                  <td colSpan={8} className="muted" style={{ padding: 12 }}>
                     No extra ledger lines.
                   </td>
                 </tr>
@@ -2265,7 +2499,7 @@ export default function VoucherForm() {
               type="button"
               className="btn ghost sm"
               onClick={() =>
-                setLedgers([...ledgers, { ledger_id: null, ledger_id__label: "", rate: "", rate_in: "", rate_on: "" }])
+                setLedgers([...ledgers, { ledger_id: null, ledger_id__label: "", rate: "", rate_in: "value", rate_on: "auto", gst_position: "after_gst" }])
               }
             >
               <Icon name="plus" size={16} />
@@ -2282,11 +2516,12 @@ export default function VoucherForm() {
             </Btn>
           </div>
         )}
-      </div>
+    </div >
 
-      {[
-        ["Payment terms", pays, setPays, cfg.payment_terms],
-        ["Terms & conditions", terms, setTerms, true],
+    {
+      [
+      ["Payment terms", pays, setPays, cfg.payment_terms],
+      ["Terms & conditions", terms, setTerms, true],
       ]
         .filter((x) => x[3])
         .map(([title, list, setList]: any) => (
@@ -2344,9 +2579,10 @@ export default function VoucherForm() {
               </button>
             )}
           </div>
-        ))}
+        ))
+    }
 
-      <div className="totals">
+      < div className = "totals" >
         <div className="t">
           <span>Total qty</span>
           <b>{fq(totals.total_qty)}</b>
@@ -2364,356 +2600,359 @@ export default function VoucherForm() {
           <span>Total value</span>
           <b>₹ {money(totals.total)}</b>
         </div>
-      </div>
+      </div >
 
-      {picker && (
-        <SourcePicker
-          doc={doc!}
-          src={src}
-          isOutward={(cfg?.stock || 0) < 0}
-          partyId={h?.party_id}
-          partyLabel={h?.party_id__label}
-          excludeId={id}
-          existingKeys={
-            new Set(
-              items
-                .map((it) => String(it.src_item_id || it.req_item_id || ""))
-                .filter(Boolean)
-            )
-          }
-          onClose={() => setPicker(false)}
-          onPick={onPick}
-        />
-      )}
+    { picker && (
+      <SourcePicker
+        doc={doc!}
+        src={src}
+        isOutward={(cfg?.stock || 0) < 0}
+        partyId={h?.party_id}
+        partyLabel={h?.party_id__label}
+        excludeId={id}
+        existingKeys={
+          new Set(
+            items
+              .map((it) => String(it.src_item_id || it.req_item_id || ""))
+              .filter(Boolean)
+          )
+        }
+        onClose={() => setPicker(false)}
+        onPick={onPick}
+      />
+    )
+}
 
-      {barcodeModalOpen && (
-        <div className="veil center" style={{ zIndex: 1000 }}>
-          <div
-            className="modal"
-            style={{
-              width: "min(720px, 95vw)",
-              maxHeight: "88vh",
-              display: "flex",
-              flexDirection: "column",
-            }}
+{
+  barcodeModalOpen && (
+    <div className="veil center" style={{ zIndex: 1000 }}>
+      <div
+        className="modal"
+        style={{
+          width: "min(720px, 95vw)",
+          maxHeight: "88vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div className="modal-head" style={{ borderBottom: "2px solid var(--tape)" }}>
+          <Icon name="scan" size={24} style={{ color: "var(--tape)" }} />
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: 18, margin: 0 }}>Barcode Scanning Verification</h2>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+              Scan product barcodes. Scanned counts will be mapped to the items list on clicking ACCEPT.
+            </div>
+          </div>
+          <button
+            className="icon-btn"
+            onClick={() => setBarcodeModalOpen(false)}
+            title="Close"
           >
-            <div className="modal-head" style={{ borderBottom: "2px solid var(--tape)" }}>
-              <Icon name="scan" size={24} style={{ color: "var(--tape)" }} />
-              <div style={{ flex: 1 }}>
-                <h2 style={{ fontSize: 18, margin: 0 }}>Barcode Scanning Verification</h2>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                  Scan product barcodes. Scanned counts will be mapped to the items list on clicking ACCEPT.
-                </div>
-              </div>
-              <button
-                className="icon-btn"
-                onClick={() => setBarcodeModalOpen(false)}
-                title="Close"
-              >
-                <Icon name="x" />
-              </button>
-            </div>
+            <Icon name="x" />
+          </button>
+        </div>
 
-            <div className="modal-body" style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
-              {/* Continuous Scanner Input Field */}
-              <div className="scanbar" style={{ margin: "0 0 12px 0", border: "2px solid var(--tape)" }}>
-                <Icon name="scan" size={26} style={{ color: "var(--tape)" }} />
-                <input
-                  ref={modalScanRef}
-                  autoFocus
-                  placeholder="Scan or type a barcode, then press Enter"
-                  onKeyDown={handleModalScanKeyDown}
-                />
-              </div>
+        <div className="modal-body" style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+          {/* Continuous Scanner Input Field */}
+          <div className="scanbar" style={{ margin: "0 0 12px 0", border: "2px solid var(--tape)" }}>
+            <Icon name="scan" size={26} style={{ color: "var(--tape)" }} />
+            <input
+              ref={modalScanRef}
+              autoFocus
+              placeholder="Scan or type a barcode, then press Enter"
+              onKeyDown={handleModalScanKeyDown}
+            />
+          </div>
 
-              {/* Status Banner */}
-              {modalScanStatus.message && (
-                <div
-                  className={`scan-status-pill scan-status-${modalScanStatus.type || "idle"}`}
-                  style={{ marginBottom: 12 }}
-                >
-                  <Icon
-                    name={
-                      modalScanStatus.type === "success"
-                        ? "check"
-                        : modalScanStatus.type === "err"
-                        ? "alert"
-                        : "info"
-                    }
-                    size={16}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div>{modalScanStatus.message}</div>
-                    {modalScanStatus.details && (
-                      <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>
-                        {modalScanStatus.details}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "inherit",
-                      padding: 2,
-                      fontWeight: "bold",
-                    }}
-                    onClick={() => setModalScanStatus({ type: "idle", message: "" })}
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {/* Table matching user's Excel-like screenshot */}
-              <div
-                style={{
-                  border: "2px solid #eab308",
-                  borderRadius: 6,
-                  overflow: "hidden",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                }}
-              >
-                <table className="tbl" style={{ width: "100%", margin: 0, borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "#ffff00", color: "#000", fontWeight: 700 }}>
-                      <th
-                        style={{
-                          width: 50,
-                          padding: "10px 12px",
-                          background: "#ffff00",
-                          color: "#000",
-                          borderRight: "1px solid #d4d4d8",
-                          borderBottom: "2px solid #ca8a04",
-                        }}
-                      >
-                        Sl
-                      </th>
-                      <th
-                        style={{
-                          width: 180,
-                          padding: "10px 14px",
-                          background: "#ffff00",
-                          color: "#000",
-                          borderRight: "1px solid #d4d4d8",
-                          borderBottom: "2px solid #ca8a04",
-                          fontFamily: "monospace",
-                          fontSize: 14,
-                        }}
-                      >
-                        Barcode
-                      </th>
-                      <th
-                        style={{
-                          padding: "10px 14px",
-                          background: "#ffff00",
-                          color: "#000",
-                          borderBottom: "2px solid #ca8a04",
-                        }}
-                      >
-                        Item Name
-                      </th>
-                      <th
-                        style={{
-                          width: 60,
-                          textAlign: "center",
-                          padding: "10px 12px",
-                          background: "#ffff00",
-                          color: "#000",
-                          borderBottom: "2px solid #ca8a04",
-                        }}
-                      >
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scannedList.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          style={{
-                            textAlign: "center",
-                            padding: "32px 16px",
-                            color: "var(--muted)",
-                            background: "#fffbeb",
-                          }}
-                        >
-                          <Icon
-                            name="scan"
-                            size={34}
-                            style={{ opacity: 0.35, display: "block", margin: "0 auto 8px" }}
-                          />
-                          No barcodes scanned yet. Scan or type a barcode above and press Enter.
-                        </td>
-                      </tr>
-                    ) : (
-                      scannedList.map((s, idx) => (
-                        <tr
-                          key={s.id}
-                          style={{
-                            borderBottom: "1px solid #e4e4e7",
-                            background: idx % 2 === 0 ? "#ffffff" : "#fefce8",
-                          }}
-                        >
-                          <td
-                            style={{
-                              padding: "8px 12px",
-                              color: "var(--muted)",
-                              borderRight: "1px solid #e4e4e7",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {idx + 1}
-                          </td>
-                          <td
-                            style={{
-                              padding: "8px 14px",
-                              fontFamily: "monospace",
-                              fontWeight: 700,
-                              fontSize: 14,
-                              color: "var(--denim-950)",
-                              borderRight: "1px solid #e4e4e7",
-                            }}
-                          >
-                            {s.barcode}
-                          </td>
-                          <td style={{ padding: "8px 14px", fontWeight: 600, color: "var(--denim-900)" }}>
-                            {s.item_name}
-                          </td>
-                          <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              style={{ color: "var(--red, #dc2626)", padding: "2px 6px" }}
-                              title="Remove scan"
-                              onClick={() => removeScan(s.id)}
-                            >
-                              <Icon name="trash" size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Real-time Summary & Counter */}
-              {scannedList.length > 0 && (
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: "10px 14px",
-                    background: "var(--denim-100, #f1f5f9)",
-                    borderRadius: 6,
-                    fontSize: 13,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontWeight: 600,
-                      color: "var(--denim-950)",
-                      marginBottom: 6,
-                    }}
-                  >
-                    <span>Total Scanned: {scannedList.length} item(s)</span>
-                    <button
-                      type="button"
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--red, #dc2626)",
-                        cursor: "pointer",
-                        fontSize: 12,
-                        fontWeight: 600,
-                      }}
-                      onClick={() => {
-                        setScannedList([]);
-                        setModalScanStatus({ type: "idle", message: "" });
-                      }}
-                    >
-                      Clear all scans
-                    </button>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px 12px",
-                      fontSize: 12,
-                      color: "var(--denim-800)",
-                    }}
-                  >
-                    {Array.from(
-                      scannedList
-                        .reduce((m, item) => {
-                          m.set(item.item_name, (m.get(item.item_name) || 0) + 1);
-                          return m;
-                        }, new Map<string, number>())
-                        .entries()
-                    ).map(([name, count]) => (
-                      <span
-                        key={name}
-                        style={{
-                          background: "var(--paper)",
-                          padding: "3px 8px",
-                          borderRadius: 4,
-                          border: "1px solid var(--line)",
-                        }}
-                      >
-                        <b>{name}</b>: {count}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer with ACCEPT Button matching image */}
+          {/* Status Banner */}
+          {modalScanStatus.message && (
             <div
-              className="modal-foot"
-              style={{
-                padding: "14px 20px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                background: "var(--paper)",
-              }}
+              className={`scan-status-pill scan-status-${modalScanStatus.type || "idle"}`}
+              style={{ marginBottom: 12 }}
             >
-              <Btn className="ghost" onClick={() => setBarcodeModalOpen(false)}>
-                Cancel
-              </Btn>
+              <Icon
+                name={
+                  modalScanStatus.type === "success"
+                    ? "check"
+                    : modalScanStatus.type === "err"
+                      ? "alert"
+                      : "info"
+                }
+                size={16}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{modalScanStatus.message}</div>
+                {modalScanStatus.details && (
+                  <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>
+                    {modalScanStatus.details}
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 style={{
-                  background: "#ea580c",
-                  color: "#ffffff",
+                  background: "none",
                   border: "none",
-                  borderRadius: "6px",
-                  padding: "10px 32px",
-                  fontSize: "15px",
-                  fontWeight: 800,
-                  letterSpacing: "0.08em",
                   cursor: "pointer",
-                  boxShadow: "0 2px 10px rgba(234, 88, 12, 0.4)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
+                  color: "inherit",
+                  padding: 2,
+                  fontWeight: "bold",
                 }}
-                onClick={acceptScannedBarcodes}
+                onClick={() => setModalScanStatus({ type: "idle", message: "" })}
               >
-                <Icon name="check" size={18} />
-                ACCEPT
+                ✕
               </button>
             </div>
+          )}
+
+          {/* Table matching user's Excel-like screenshot */}
+          <div
+            style={{
+              border: "2px solid #eab308",
+              borderRadius: 6,
+              overflow: "hidden",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+            }}
+          >
+            <table className="tbl" style={{ width: "100%", margin: 0, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "#ffff00", color: "#000", fontWeight: 700 }}>
+                  <th
+                    style={{
+                      width: 50,
+                      padding: "10px 12px",
+                      background: "#ffff00",
+                      color: "#000",
+                      borderRight: "1px solid #d4d4d8",
+                      borderBottom: "2px solid #ca8a04",
+                    }}
+                  >
+                    Sl
+                  </th>
+                  <th
+                    style={{
+                      width: 180,
+                      padding: "10px 14px",
+                      background: "#ffff00",
+                      color: "#000",
+                      borderRight: "1px solid #d4d4d8",
+                      borderBottom: "2px solid #ca8a04",
+                      fontFamily: "monospace",
+                      fontSize: 14,
+                    }}
+                  >
+                    Barcode
+                  </th>
+                  <th
+                    style={{
+                      padding: "10px 14px",
+                      background: "#ffff00",
+                      color: "#000",
+                      borderBottom: "2px solid #ca8a04",
+                    }}
+                  >
+                    Item Name
+                  </th>
+                  <th
+                    style={{
+                      width: 60,
+                      textAlign: "center",
+                      padding: "10px 12px",
+                      background: "#ffff00",
+                      color: "#000",
+                      borderBottom: "2px solid #ca8a04",
+                    }}
+                  >
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {scannedList.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      style={{
+                        textAlign: "center",
+                        padding: "32px 16px",
+                        color: "var(--muted)",
+                        background: "#fffbeb",
+                      }}
+                    >
+                      <Icon
+                        name="scan"
+                        size={34}
+                        style={{ opacity: 0.35, display: "block", margin: "0 auto 8px" }}
+                      />
+                      No barcodes scanned yet. Scan or type a barcode above and press Enter.
+                    </td>
+                  </tr>
+                ) : (
+                  scannedList.map((s, idx) => (
+                    <tr
+                      key={s.id}
+                      style={{
+                        borderBottom: "1px solid #e4e4e7",
+                        background: idx % 2 === 0 ? "#ffffff" : "#fefce8",
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: "8px 12px",
+                          color: "var(--muted)",
+                          borderRight: "1px solid #e4e4e7",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {idx + 1}
+                      </td>
+                      <td
+                        style={{
+                          padding: "8px 14px",
+                          fontFamily: "monospace",
+                          fontWeight: 700,
+                          fontSize: 14,
+                          color: "var(--denim-950)",
+                          borderRight: "1px solid #e4e4e7",
+                        }}
+                      >
+                        {s.barcode}
+                      </td>
+                      <td style={{ padding: "8px 14px", fontWeight: 600, color: "var(--denim-900)" }}>
+                        {s.item_name}
+                      </td>
+                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          style={{ color: "var(--red, #dc2626)", padding: "2px 6px" }}
+                          title="Remove scan"
+                          onClick={() => removeScan(s.id)}
+                        >
+                          <Icon name="trash" size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
+
+          {/* Real-time Summary & Counter */}
+          {scannedList.length > 0 && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: "10px 14px",
+                background: "var(--denim-100, #f1f5f9)",
+                borderRadius: 6,
+                fontSize: 13,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontWeight: 600,
+                  color: "var(--denim-950)",
+                  marginBottom: 6,
+                }}
+              >
+                <span>Total Scanned: {scannedList.length} item(s)</span>
+                <button
+                  type="button"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--red, #dc2626)",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                  onClick={() => {
+                    setScannedList([]);
+                    setModalScanStatus({ type: "idle", message: "" });
+                  }}
+                >
+                  Clear all scans
+                </button>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "6px 12px",
+                  fontSize: 12,
+                  color: "var(--denim-800)",
+                }}
+              >
+                {Array.from(
+                  scannedList
+                    .reduce((m, item) => {
+                      m.set(item.item_name, (m.get(item.item_name) || 0) + 1);
+                      return m;
+                    }, new Map<string, number>())
+                    .entries()
+                ).map(([name, count]) => (
+                  <span
+                    key={name}
+                    style={{
+                      background: "var(--paper)",
+                      padding: "3px 8px",
+                      borderRadius: 4,
+                      border: "1px solid var(--line)",
+                    }}
+                  >
+                    <b>{name}</b>: {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Modal Footer with ACCEPT Button matching image */}
+        <div
+          className="modal-foot"
+          style={{
+            padding: "14px 20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            background: "var(--paper)",
+          }}
+        >
+          <Btn className="ghost" onClick={() => setBarcodeModalOpen(false)}>
+            Cancel
+          </Btn>
+          <button
+            type="button"
+            style={{
+              background: "#ea580c",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "6px",
+              padding: "10px 32px",
+              fontSize: "15px",
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              cursor: "pointer",
+              boxShadow: "0 2px 10px rgba(234, 88, 12, 0.4)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+            onClick={acceptScannedBarcodes}
+          >
+            <Icon name="check" size={18} />
+            ACCEPT
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
     </>
   );
 }

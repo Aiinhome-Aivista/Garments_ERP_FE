@@ -135,6 +135,7 @@ const P: Record<string, React.ReactNode> = {
   ),
   check: <path d="M5 12.5l5 5 9-11" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  minus: <path d="M5 12h14" />,
   x: <path d="M6 6l12 12M18 6L6 18" />,
   edit: <path d="M4 20l1-4L16 5l3 3L8 19z" />,
   search: (
