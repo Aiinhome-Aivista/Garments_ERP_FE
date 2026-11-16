@@ -165,7 +165,6 @@ export function buildNav(
 
   // 3. Production Cycle
   const floorItems = filterItems([
-    { label: "BOM Master", to: "/masters/bom", icon: "layers", res: "bom" },
     { label: "Production planning", to: "/planning", icon: "clipboard", res: "planning" },
     { label: "Requisition for PO", to: "/requisitions", icon: "tag", res: "requisition" },
     { label: "Stock", to: "/stock", icon: "layers", res: "stock_report" },
