@@ -1,8 +1,9 @@
 const KEY = "loomline.token";
-let onAuthLost: () => void = () => {};
+let onAuthLost: () => void = () => { };
 export const setAuthLostHandler = (fn: () => void) => (onAuthLost = fn);
 export const getToken = (): string | null => localStorage.getItem(KEY);
 export const setToken = (t: string | null): void => (t ? localStorage.setItem(KEY, t) : localStorage.removeItem(KEY));
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export class ApiError extends Error {
   status: number;
@@ -39,7 +40,7 @@ export async function api<T = any>(path: string, { method = "GET", body, quiet =
       "Content-Type": "application/json",
       ...(token ? { Authorization: "Bearer " + token } : {}),
     };
-    const res = await fetch("/api" + path, {
+    const res = await fetch(`${API_BASE_URL}/api${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),

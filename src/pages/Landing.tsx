@@ -44,13 +44,14 @@ export default function Landing() {
           <div className="hero-text-content">
             <h1>Stitching Success in<br />Garment Manufacturing</h1>
             <p>
-              Loomline ERP is an all-in-one platform built specifically for the apparel industry. 
+              Loomline ERP is an all-in-one platform built specifically for the apparel industry.
               Manage everything from raw material requisitions and logistics to production planning and final dispatch—all seamlessly connected on one thread.
             </p>
             <Link to="/login" className="hero-cta">Go to Dashboard</Link>
           </div>
           <div className="hero-image-wrap">
-            <img src="/hero-img.jpg" alt="Garment ERP Dashboard" className="floating-img" />
+            <img src={`${import.meta.env.BASE_URL}hero-img.jpg`}
+              alt="Garment ERP Dashboard" className="floating-img" />
           </div>
         </div>
       </section>
@@ -185,21 +186,21 @@ export default function Landing() {
         </div>
         <div className="gallery-grid">
           <div className="gallery-card image-card hover-lift">
-            <img src="/gallery-1.jpg" alt="Digital Production Planning" className="g-img" />
+            <img src={`${import.meta.env.BASE_URL}gallery-1.jpg`} alt="Digital Production Planning" className="g-img" />
             <div className="g-overlay">
               <div className="g-title">Digital Production Planning</div>
               <div className="g-subtitle">Real-time batch schedules & cutting plans</div>
             </div>
           </div>
           <div className="gallery-card image-card hover-lift">
-            <img src="/gallery-2.jpg" alt="Precision Fabric Cutting" className="g-img" />
+            <img src={`${import.meta.env.BASE_URL}gallery-2.jpg`} alt="Precision Fabric Cutting" className="g-img" />
             <div className="g-overlay">
               <div className="g-title">Precision Fabric Cutting</div>
               <div className="g-subtitle">Laser guide markers & zero-waste monitoring</div>
             </div>
           </div>
           <div className="gallery-card image-card hover-lift">
-            <img src="/gallery-3.jpg" alt="Fabric & Garment Warehouse" className="g-img" />
+            <img src={`${import.meta.env.BASE_URL}gallery-3.jpg`} alt="Fabric & Garment Warehouse" className="g-img" />
             <div className="g-overlay">
               <div className="g-title">Fabric & Garment Warehouse</div>
               <div className="g-subtitle">Barcode scanning & multi-godown stock sync</div>
@@ -272,7 +273,7 @@ export default function Landing() {
         <div className="footer-content">
           <div className="footer-brand">
             <h2>Loomline ERP</h2>
-            <p>Next-generation garment<br/>manufacturing software.</p>
+            <p>Next-generation garment<br />manufacturing software.</p>
           </div>
           <div className="footer-links">
             <h4>Application</h4>
