@@ -116,17 +116,25 @@ export function Input({ f, value, label, onChange, compact, invalid, disabled }:
           placeholder={compact ? "" : "Search…"}
         />
       );
-    case "select":
+    case "select": {
+      const baseOpts = (f.options || []).filter(Boolean);
+      const opts = v && !baseOpts.includes(v) ? [v, ...baseOpts] : baseOpts;
       return (
-        <select value={v || (f.no_empty ? f.default || f.options?.[0] : "")} disabled={disabled} className={invalid ? "err" : ""} onChange={(e) => set(e.target.value || null)}>
+        <select
+          value={v || (f.no_empty ? f.default || opts[0] : "")}
+          disabled={disabled}
+          className={invalid ? "err" : ""}
+          onChange={(e) => set(e.target.value || null)}
+        >
           {!f.no_empty && <option value="">Select…</option>}
-          {(f.options || []).filter(Boolean).map((o) => (
+          {opts.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
           ))}
         </select>
       );
+    }
     case "textarea":
       return <textarea value={v} disabled={disabled} onChange={(e) => set(e.target.value)} />;
     case "bool":

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api, getToken, setAuthLostHandler, setToken } from "./api";
 import Icon from "./components/Icons";
+import { COUNTRY_OPTIONS, DEFAULT_COUNTRY } from "./countryOptions";
 
 export interface User {
   id: number;
@@ -92,25 +93,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     if (m?.masters?.ledger?.fields) {
       let lFields = [...m.masters.ledger.fields];
-      if (!lFields.some((f: any) => f.name === "country")) {
+      const countryIdx = lFields.findIndex((f: any) => f.name === "country");
+      const countryField = {
+        name: "country",
+        label: "Country",
+        type: "select",
+        options: COUNTRY_OPTIONS,
+        default: DEFAULT_COUNTRY,
+        no_empty: true,
+      };
+      if (countryIdx !== -1) {
+        lFields[countryIdx] = { ...lFields[countryIdx], ...countryField };
+      } else {
         const cityIdx = lFields.findIndex((f: any) => f.name === "city");
-        const countryField = {
-          name: "country",
-          label: "Country",
-          type: "select",
-          options: [
-            "India", "Afghanistan", "Australia", "Bangladesh", "Belgium", "Bhutan", "Brazil",
-            "Canada", "China", "Denmark", "Egypt", "France", "Germany", "Hong Kong",
-            "Indonesia", "Ireland", "Italy", "Japan", "Kenya", "Malaysia", "Maldives",
-            "Mexico", "Myanmar", "Nepal", "Netherlands", "New Zealand", "Nigeria", "Norway",
-            "Oman", "Pakistan", "Philippines", "Poland", "Qatar", "Russia", "Saudi Arabia",
-            "Singapore", "South Africa", "South Korea", "Spain", "Sri Lanka", "Sweden",
-            "Switzerland", "Taiwan", "Thailand", "Turkey", "UAE", "United Kingdom",
-            "United States", "Vietnam", "Other",
-          ],
-          default: "India",
-          no_empty: true,
-        };
         lFields = cityIdx !== -1
           ? [...lFields.slice(0, cityIdx), countryField, ...lFields.slice(cityIdx)]
           : [...lFields, countryField];

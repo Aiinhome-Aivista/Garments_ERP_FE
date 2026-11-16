@@ -10,6 +10,7 @@ import { Btn, Empty, Skeleton } from "../components/Loaders";
 import { useApp } from "../store";
 import { OverlayPanel } from "primereact/overlaypanel";
 import { ExcelFilter } from "../components/ExcelFilter";
+import { COUNTRY_OPTIONS, DEFAULT_COUNTRY } from "../countryOptions";
 
 interface MasterDef {
   key: string;
@@ -354,25 +355,19 @@ export default function MasterList() {
     }
     if (rawDef.key === "ledger") {
       let fields = [...rawDef.fields];
-      if (!fields.some((f) => f.name === "country")) {
+      const countryIdx = fields.findIndex((f) => f.name === "country");
+      const countryField: FieldDef & { list?: boolean } = {
+        name: "country",
+        label: "Country",
+        type: "select",
+        options: COUNTRY_OPTIONS,
+        default: DEFAULT_COUNTRY,
+        no_empty: true,
+      };
+      if (countryIdx !== -1) {
+        fields[countryIdx] = { ...fields[countryIdx], ...countryField };
+      } else {
         const cityIdx = fields.findIndex((f) => f.name === "city");
-        const countryField: FieldDef & { list?: boolean } = {
-          name: "country",
-          label: "Country",
-          type: "select",
-          options: [
-            "India", "Afghanistan", "Australia", "Bangladesh", "Belgium", "Bhutan", "Brazil",
-            "Canada", "China", "Denmark", "Egypt", "France", "Germany", "Hong Kong",
-            "Indonesia", "Ireland", "Italy", "Japan", "Kenya", "Malaysia", "Maldives",
-            "Mexico", "Myanmar", "Nepal", "Netherlands", "New Zealand", "Nigeria", "Norway",
-            "Oman", "Pakistan", "Philippines", "Poland", "Qatar", "Russia", "Saudi Arabia",
-            "Singapore", "South Africa", "South Korea", "Spain", "Sri Lanka", "Sweden",
-            "Switzerland", "Taiwan", "Thailand", "Turkey", "UAE", "United Kingdom",
-            "United States", "Vietnam", "Other",
-          ],
-          default: "India",
-          no_empty: true,
-        };
         fields = cityIdx !== -1
           ? [...fields.slice(0, cityIdx), countryField, ...fields.slice(cityIdx)]
           : [...fields, countryField];
