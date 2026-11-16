@@ -11,7 +11,7 @@ import "./theme.css";
 const rootElement = document.getElementById("root");
 if (rootElement) {
   createRoot(rootElement).render(
-    <BrowserRouter>
+    <BrowserRouter basename="/loomline">
       <AppProvider>
         <App />
       </AppProvider>
