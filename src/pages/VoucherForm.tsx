@@ -662,6 +662,7 @@ export default function VoucherForm() {
 
   const locked = !!rec?.locked;
   const isNew = !id;
+  const editable = !locked && can(doc!, isNew ? "create" : "edit");
   const src = cfg?.source;
 
   const blankItem = () => ({ qty: "", rate: "", disc_pct: "", disc_amt: "" });
@@ -810,8 +811,8 @@ export default function VoucherForm() {
       rows.map((r, j) => {
         if (j !== i) return r;
         const n = { ...r, ...patch };
-        if ("gst_rate" in patch) {
-          n.is_manual_gst = true;
+        if (patch.is_manual_gst !== undefined) {
+          n.is_manual_gst = patch.is_manual_gst;
         }
         if ("disc_pct" in patch) {
           if (Number(patch.disc_pct) > 0) {
@@ -933,11 +934,6 @@ export default function VoucherForm() {
             n.factor = 1;
             n.allow_fraction = p.allow_fraction;
           }
-          if (p.gst_rate !== undefined && p.gst_rate !== null) {
-            n.gst_rate = Number(p.gst_rate);
-          } else if (n.gst_rate === undefined || n.gst_rate === "") {
-            n.gst_rate = gstRate;
-          }
           if (doc !== "sales_order" && p.pricelist_id) {
             n.pricelist_id = p.pricelist_id;
             n.pricelist_id__label = p.pricelist_label;
@@ -954,7 +950,17 @@ export default function VoucherForm() {
             }
           }
           if (!n.customer_item_name && p.customer_item_name) n.customer_item_name = p.customer_item_name;
-          return { ...n, ...calcItem(n) };
+
+          if (n.gst_type === "Slab" && n.gst_slabs && n.gst_slabs.length > 0) {
+            n.gst_rate = resolveGstRate("Slab", 0, n.gst_slabs, n.rate || 0);
+          } else if (p.gst_rate !== undefined && p.gst_rate !== null) {
+            n.gst_rate = Number(p.gst_rate);
+          } else if (n.gst_rate === undefined || n.gst_rate === "") {
+            n.gst_rate = gstRate;
+          }
+
+          const calc = calcItem(n);
+          return { ...n, ...calc, gst_rate: n.gst_rate };
         })
       );
     } catch {
@@ -1022,6 +1028,9 @@ export default function VoucherForm() {
       disc_pct: Number(l.disc_pct) || "",
       disc_amt: Number(l.disc_pct) ? "" : Number(l.disc_amt) || "",
       gst_rate: l.gst_rate !== undefined && l.gst_rate !== null ? Number(l.gst_rate) : 0,
+      gst_type: l.gst_type,
+      gst_slabs: l.gst_slabs,
+      is_manual_gst: false,
       delivery_date: l.delivery_date,
       barcode: l.barcode || "",
       godown_id: l.godown_id,
@@ -1671,12 +1680,15 @@ export default function VoucherForm() {
     }
   };
 
-  const applyGst = async () => {
-    setBusy("gst");
+  const applyGst = async (silent = false) => {
+    if (!silent) setBusy("gst");
     try {
+      const validItems = items.filter((i) => i.product_id);
+      if (!validItems.length || !h.party_id) return;
       const r = await api<{ lines: any[]; inter_state: boolean }>(`/vouchers/${doc}/gst-suggest`, {
         method: "POST",
-        body: { party_id: h.party_id, branch_id: h.branch_id, items: items.filter((i) => i.product_id) },
+        body: { party_id: h.party_id, branch_id: h.branch_id, items: validItems },
+        quiet: silent,
       });
       setLedgers((cur) => [
         ...cur.filter((l) => !getGstType(l)),
@@ -1686,13 +1698,24 @@ export default function VoucherForm() {
           rate_on: "auto",
         })),
       ]);
-      toast(r.inter_state ? "IGST applied (different state)" : "CGST + SGST applied");
+      if (!silent) toast(r.inter_state ? "IGST applied (different state)" : "CGST + SGST applied");
     } catch (e: any) {
-      toast(e.message, "err");
+      if (!silent) toast(e.message, "err");
     } finally {
-      setBusy("");
+      if (!silent) setBusy("");
     }
   };
+
+  useEffect(() => {
+    if (locked || !editable || !h?.party_id || !cfg?.ledgers) return;
+    const hasProductWithGst = items.some(
+      (it) => it.product_id && (Number(it.gst_rate) > 0 || it.gst_type === "Slab")
+    );
+    const hasGstLedgers = ledgers.some((l) => Boolean(getGstType(l)));
+    if (hasProductWithGst && !hasGstLedgers) {
+      applyGst(true);
+    }
+  }, [h?.party_id, items, ledgers, editable, locked, cfg?.ledgers]); // eslint-disable-line
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -1707,7 +1730,6 @@ export default function VoucherForm() {
 
   if (!h || !cfg) return <StitchLoader label="Laying out the pattern…" />;
 
-  const editable = !locked && can(doc!, isNew ? "create" : "edit");
   const colKeys: string[] = cfg.cols.flatMap((c: string) => (c === "product_id" ? [c, "uom"] : [c]));
   const status = rec?.approval_status;
 
@@ -1915,7 +1937,7 @@ export default function VoucherForm() {
           value={row.gst_rate === 0 ? "0" : (row.gst_rate ?? "")}
           placeholder="0"
           title="GST % applicable to this item"
-          onChange={(e) => /^\d*\.?\d*$/.test(e.target.value) && setItem(i, { gst_rate: e.target.value })}
+          onChange={(e) => /^\d*\.?\d*$/.test(e.target.value) && setItem(i, { gst_rate: e.target.value, is_manual_gst: true })}
         />
       );
     }

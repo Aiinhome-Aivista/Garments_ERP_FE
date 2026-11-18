@@ -62,6 +62,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
     setMeta(null);
+    try {
+      sessionStorage.removeItem("loomline.nav_opened");
+      localStorage.removeItem("loomline.nav_opened");
+    } catch {}
   }, []);
 
   useEffect(() => setAuthLostHandler(logout), [logout]);
@@ -184,6 +188,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       body: { username, password },
     });
     setToken(r.token);
+    try {
+      sessionStorage.removeItem("loomline.nav_opened");
+      localStorage.removeItem("loomline.nav_opened");
+    } catch {}
     await load();
   };
 
@@ -201,14 +209,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const p = user?.permissions || {};
       if ("*" in p) return true;
       if ((p[res] || []).some((a) => a === "*" || a === act)) return true;
-      
+
       // BOM Master permission fallback: allow if user has planning or product permissions, or allow view by default
       if (res === "bom") {
         if ((p["planning"] || []).some((a) => a === "*" || a === act)) return true;
         if ((p["product"] || []).some((a) => a === "*" || a === act)) return true;
         if (act === "view") return true;
       }
-      
+
       if (meta?.txn_types && meta?.vouchers) {
         const voucherDef = meta.vouchers[res];
         if (voucherDef) {

@@ -212,6 +212,40 @@ function MasterForm({ def, id, readOnly = false, onClose, onSaved }: MasterFormP
           }
         }
       }
+
+      // Process Definition with BOM Validation
+      if (form.processes && form.processes.length > 0) {
+        for (let pIdx = 0; pIdx < form.processes.length; pIdx++) {
+          const proc = form.processes[pIdx];
+          if (!proc.process_id) {
+            toast(`Process ${pIdx + 1}: Please select a process.`, "err");
+            return;
+          }
+          const mats = proc.materials || [];
+          const seenMats = new Set<any>();
+          for (let mIdx = 0; mIdx < mats.length; mIdx++) {
+            const m = mats[mIdx];
+            if (!m.material_id) {
+              toast(`Process ${pIdx + 1}, Material ${mIdx + 1}: Please select an item/material.`, "err");
+              return;
+            }
+            if (seenMats.has(m.material_id)) {
+              toast(`Process ${pIdx + 1}: Duplicate material "${m.material_id__label || 'Item'}" cannot be added multiple times in the same process.`, "err");
+              return;
+            }
+            seenMats.add(m.material_id);
+            const q = Number(m.qty_per_unit);
+            if (m.qty_per_unit === "" || m.qty_per_unit === null || isNaN(q) || q <= 0) {
+              toast(`Process ${pIdx + 1}, Material ${mIdx + 1}: Quantity per unit must be greater than zero.`, "err");
+              return;
+            }
+            if (!m.uom_id) {
+              toast(`Process ${pIdx + 1}, Material ${mIdx + 1}: UOM is required.`, "err");
+              return;
+            }
+          }
+        }
+      }
     }
 
     setBusy(true);
@@ -529,13 +563,8 @@ export default function MasterList() {
           )}
         </div>
       </div>
-      <div className="tbl-wrap" style={{ position: "relative" }}>
-        {loading && rows !== null && (
-          <div style={{ position: "absolute", inset: 0, background: "var(--bg)", opacity: 0.6, display: "flex", justifyContent: "center", paddingTop: 60, zIndex: 10 }}>
-            <i className="pi pi-spin pi-spinner" style={{ fontSize: "2rem", color: "var(--tape)" }}></i>
-          </div>
-        )}
-        {rows === null ? (
+      <div className="tbl-wrap">
+        {loading || rows === null ? (
           <Skeleton rows={8} />
         ) : !rows.length ? (
           <Empty icon={def.icon} title={q ? "Nothing matches your search" : `No ${def.label.toLowerCase()} yet`}>

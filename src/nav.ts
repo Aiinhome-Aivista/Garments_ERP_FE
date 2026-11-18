@@ -99,16 +99,9 @@ export function buildNav(
   };
 
   const rawMasters: Record<string, any> = { ...(meta.masters || {}) };
-  if (!rawMasters.bom) {
-    rawMasters.bom = {
-      key: "bom",
-      label: "BOM Master",
-      group: "Production",
-      icon: "layers",
-    };
-  }
+  delete rawMasters.bom;
   const allMasters = Object.values(rawMasters)
-    .filter((m: any) => !m.hidden)
+    .filter((m: any) => !m.hidden && m.key !== "bom")
     .sort((a: any, b: any) => {
       const rankA = getMasterRank(a);
       const rankB = getMasterRank(b);

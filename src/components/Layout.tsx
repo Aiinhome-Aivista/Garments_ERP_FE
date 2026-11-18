@@ -75,10 +75,11 @@ export default function Layout() {
   const [pal, setPal] = useState(false);
   const [opened, setOpened] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem("loomline.nav_opened");
+      localStorage.removeItem("loomline.nav_opened");
+      const saved = sessionStorage.getItem("loomline.nav_opened");
       if (saved) return JSON.parse(saved);
     } catch { }
-    return { Masters: true, Transactions: true, "Production Cycle": true };
+    return { Masters: false, Transactions: false, "Production Cycle": false };
   });
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("side_collapsed") === "true");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -87,9 +88,15 @@ export default function Layout() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("loomline.nav_opened", JSON.stringify(opened));
+      sessionStorage.setItem("loomline.nav_opened", JSON.stringify(opened));
     } catch { }
   }, [opened]);
+
+  useEffect(() => {
+    if (loc.pathname.startsWith("/masters/")) {
+      setOpened((prev) => (prev.Masters ? prev : { ...prev, Masters: true }));
+    }
+  }, [loc.pathname]);
 
   useEffect(() => {
     const unsub = onBusy(setBusy);
