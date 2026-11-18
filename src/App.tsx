@@ -32,6 +32,7 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="masters/:key" element={<MasterList />} />
+        <Route path="masters" element={<Navigate to="/dashboard" replace />} />
         <Route path="vouchers/:doc" element={<VoucherList />} />
         <Route path="vouchers/:doc/new" element={<VoucherForm />} />
         <Route path="vouchers/:doc/:id" element={<VoucherForm />} />

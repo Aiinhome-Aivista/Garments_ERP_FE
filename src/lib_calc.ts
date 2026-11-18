@@ -32,6 +32,9 @@ export function resolveGstRate(
         }
       }
     }
+    if (slabs[0]?.gst_rate !== undefined) {
+      return n(slabs[0].gst_rate);
+    }
   }
   return n(fixedRate);
 }
@@ -116,13 +119,12 @@ export function calcTotals(items: ItemCalcInput[], ledgers: LedgerInput[]) {
     const rateOn = l.rate_on || "auto";
 
     let a = 0;
-    if (rateOn === "auto" || !l.rate_on) {
-      a = rate;
-    } else if (rateIn === "value") {
-      a = rateOn === "total_qty" ? rate * tq : rate;
-    } else {
-      // rateIn === "percent"
+    if (rateIn === "percent") {
       a = (base * rate) / 100;
+    } else if (rateOn === "total_qty") {
+      a = rate * tq;
+    } else {
+      a = rate;
     }
     a = r2(a);
     return l.ledger_type === "Discount" ? -Math.abs(a) : a;

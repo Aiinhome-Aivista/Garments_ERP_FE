@@ -1,5 +1,6 @@
 import { showIf, Input, FieldDef } from "./Field";
 import Icon from "./Icons";
+import ProcessBomGrid from "./ProcessBomGrid";
 
 export interface ChildGridDef {
   key?: string;
@@ -24,7 +25,12 @@ export default function ChildGrid({ def, rows, onChange, form, disabled, errors 
 
   const isAltUom = def.key === "alternate_uoms" || def.key === "units" || def.label?.toLowerCase().includes("alternate unit");
   const isGstSlab = def.key === "gst_slabs" || def.label?.toLowerCase().includes("gst slab");
+  const isProcessBom = def.key === "processes" || def.label?.toLowerCase().includes("process definition");
   const mainUomLabel = form?.uom_id__label || "Main UOM";
+
+  if (isProcessBom) {
+    return <ProcessBomGrid rows={rows} onChange={onChange} disabled={disabled} form={form} />;
+  }
 
   if (isGstSlab) {
     if (form?.gst_type !== "Slab") {

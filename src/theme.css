@@ -155,6 +155,7 @@ button[aria-busy="true"] {
   position: sticky;
   top: 0;
   height: 100vh;
+  min-height: 100vh;
   overflow-y: auto;
   padding: 18px 14px 30px 14px;
   transition: width .2s ease, padding .2s ease;
@@ -171,6 +172,8 @@ button[aria-busy="true"] {
   position: absolute;
   top: 0;
   bottom: 0;
+  height: 100%;
+  min-height: 100vh;
   right: 7px;
   border-right: 2px dashed rgba(245, 184, 46, .55);
   pointer-events: none;
@@ -240,6 +243,12 @@ button[aria-busy="true"] {
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity .15s ease;
+}
+.nav-title:hover {
+  opacity: 0.9;
 }
 
 .side.collapsed .nav-title {

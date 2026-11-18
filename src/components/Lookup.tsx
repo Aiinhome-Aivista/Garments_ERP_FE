@@ -43,12 +43,17 @@ export default function Lookup({
 }: LookupProps) {
   const [text, setText] = useState<string>(label || "");
   const [open, setOpen] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
   const [rows, setRows] = useState<LookupRow[]>([]);
   const [hi, setHi] = useState<number>(-1);
   const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const seq = useRef<number>(0);
   const fkey = JSON.stringify(filter);
+
+  useEffect(() => {
+    setRows([]);
+  }, [master, fkey]);
 
   useEffect(() => {
     if (!open) setText(label || "");
@@ -74,7 +79,11 @@ export default function Lookup({
   }, [value]); // eslint-disable-line
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     const my = ++seq.current;
     const t = setTimeout(() => {
       api<LookupRow[]>(
@@ -99,10 +108,15 @@ export default function Lookup({
             }
             setRows(r);
             setHi(-1);
+            setLoading(false);
           }
         })
-        .catch(() => {});
-    }, 160);
+        .catch(() => {
+          if (my === seq.current) {
+            setLoading(false);
+          }
+        });
+    }, 100);
     return () => clearTimeout(t);
   }, [text, open, master, fkey]); // eslint-disable-line
 
@@ -111,7 +125,7 @@ export default function Lookup({
       const r = box.current.getBoundingClientRect();
       setPos({ left: r.left + window.scrollX, top: r.bottom + window.scrollY + 2, width: Math.max(r.width, 240) });
     }
-  }, [open, rows.length]);
+  }, [open, rows.length, loading]);
 
   const exact = rows.some((r) => r.label.toLowerCase() === text.trim().toLowerCase());
   const canAdd = quickAdd && text.trim() && !exact && text !== label;
@@ -153,9 +167,17 @@ export default function Lookup({
         onChange={(e) => {
           setText(e.target.value);
           setOpen(true);
+          setLoading(true);
           if (!e.target.value && value) onChange(null, null);
         }}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) {
+            if (!rows.length) setLoading(true);
+            setOpen(true);
+          } else {
+            setOpen(false);
+          }
+        }}
         onFocus={(e) => {
           e.target.select();
         }}
@@ -169,6 +191,7 @@ export default function Lookup({
           if (open) {
             setOpen(false);
           } else {
+            if (!rows.length) setLoading(true);
             setOpen(true);
             box.current?.querySelector("input")?.focus();
           }
@@ -182,16 +205,26 @@ export default function Lookup({
         pos &&
         createPortal(
           <div className="lk-pop" style={pos} onMouseDown={(e) => e.preventDefault()}>
-            {rows.map((r, i) => (
-              <div key={r.id} className={i === hi ? "on" : ""} onMouseEnter={() => setHi(i)} onClick={() => pick(r)}>
-                <span>{r.label}</span>
+            {loading && !rows.length ? (
+              <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div className="skeleton" style={{ height: "14px", width: "65%" }} />
+                <div className="skeleton" style={{ height: "14px", width: "88%" }} />
+                <div className="skeleton" style={{ height: "14px", width: "50%" }} />
               </div>
-            ))}
-            {!rows.length && !canAdd && <div className="none">No match{text ? ` for “${text}”` : ""}</div>}
-            {canAdd && (
-              <div className={"add" + (hi === rows.length ? " on" : "")} onClick={add}>
-                + Add “{text.trim()}”
-              </div>
+            ) : (
+              <>
+                {rows.map((r, i) => (
+                  <div key={r.id} className={i === hi ? "on" : ""} onMouseEnter={() => setHi(i)} onClick={() => pick(r)}>
+                    <span>{r.label}</span>
+                  </div>
+                ))}
+                {!loading && !rows.length && !canAdd && <div className="none">No match{text ? ` for “${text}”` : ""}</div>}
+                {canAdd && (
+                  <div className={"add" + (hi === rows.length ? " on" : "")} onClick={add}>
+                    + Add “{text.trim()}”
+                  </div>
+                )}
+              </>
             )}
           </div>,
           document.body
