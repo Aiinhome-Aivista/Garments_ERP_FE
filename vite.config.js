@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   base: '/loomline/',
-  server: { port: 5173, proxy: { "/api": "https://aivista.co.in/Garments_ERP/" } },
-  // server: { port: 5173, proxy: { "/api": "http://127.0.0.1:8000" } },
+  // server: { port: 5173, proxy: { "/api": "https://aivista.co.in/Garments_ERP/" } },
+  server: { port: 5173, proxy: { "/api": "http://127.0.0.1:8000" } },
   build: { outDir: "dist", chunkSizeWarningLimit: 700 },
 });
