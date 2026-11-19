@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, fdate, money, qs, qty as fq, today } from "../api";
-import { calcItem, calcTotals, getGstType } from "../lib_calc";
+import { calcItem, calcTotals, getGstType, resolveGstRate } from "../lib_calc";
 import Icon from "../components/Icons";
 import Lookup from "../components/Lookup";
 import { Btn, Skeleton, StitchLoader } from "../components/Loaders";
@@ -1680,7 +1680,7 @@ export default function VoucherForm() {
     }
   };
 
-  const applyGst = async (silent = false) => {
+  const applyGst = async (silent: boolean = false) => {
     if (!silent) setBusy("gst");
     try {
       const validItems = items.filter((i) => i.product_id);
@@ -2532,7 +2532,7 @@ export default function VoucherForm() {
               icon="receipt"
               busy={busy === "gst"}
               disabled={!h.party_id || !items.some((i) => i.product_id)}
-              onClick={applyGst}
+              onClick={() => applyGst()}
             >
               Apply GST from item rates
             </Btn>
